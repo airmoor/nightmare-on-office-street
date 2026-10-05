@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import GUI from 'lil-gui'
+import { createCardTexture, createGlowLabelTexture, createScreenTexture } from './canvasText.js'
 
 /**
  * Base
@@ -275,9 +276,30 @@ const pumpkinStem = new THREE.Mesh(
 )
 pumpkinStem.position.y = 0.09
 pumpkin.add(pumpkinStem)
-pumpkin.position.set(0.55, 0.86, -0.1)
+pumpkin.position.set(0.62, 0.86, 0.25)
 pumpkin.traverse((child) => { if (child.isMesh) child.castShadow = true })
 heroDesk.add(pumpkin)
+
+// Второй монитор: на нём герой весь день откликается на вакансии
+const jobScreen = createScreenTexture({ width: 512, height: 288 })
+
+const jobMonitor = new THREE.Group()
+const jobMonitorBody = new THREE.Mesh(geometries.monitor, materials.metal)
+jobMonitorBody.castShadow = true
+jobMonitor.add(jobMonitorBody)
+const jobMonitorScreen = new THREE.Mesh(
+    geometries.screen,
+    new THREE.MeshBasicMaterial({ map: jobScreen.texture })
+)
+jobMonitorScreen.position.z = 0.021
+jobMonitor.add(jobMonitorScreen)
+jobMonitor.scale.setScalar(0.8)
+jobMonitor.position.set(0.62, 1.1, -0.12)
+jobMonitor.rotation.y = -0.45
+heroDesk.add(jobMonitor)
+
+// Точка, в которую летят все новости — голова героя
+const heroHead = heroDesk.position.clone().add(new THREE.Vector3(0, 1.5, 0.57))
 
 /**
  * Lights
@@ -311,16 +333,73 @@ heroDesk.add(monitorGlow)
  */
 const FLICKER_DURATION = 1.2
 
+const firingReasons = [
+    'LOW PERFORMANCE',
+    'INSUFFICIENT AI ADOPTION',
+    'ROLE NO LONGER REQUIRED',
+    'RESTRUCTURING',
+    'NOT AI-NATIVE ENOUGH',
+    'REPLACED BY AGENT',
+]
+
 const fireColleague = (desk) => {
     if (desk.userData.state !== 'on') return
     desk.userData.state = 'flickering'
     desk.userData.flickerStart = clock.getElapsedTime()
+    showFiringLabel(desk)
 }
+
+const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
 
 const fireRandomColleague = () => {
     const working = colleagues.filter((desk) => desk.userData.state === 'on')
-    if (working.length === 0) return
-    fireColleague(working[Math.floor(Math.random() * working.length)])
+    if (working.length === 0) return null
+    const desk = pickRandom(working)
+    fireColleague(desk)
+    return desk
+}
+
+/**
+ * Firing labels
+ * Над столом всплывает причина увольнения: появляется, медленно поднимается и тает
+ */
+const LABEL_LIFETIME = 3.5
+const floatingLabels = []
+
+const showFiringLabel = (desk) => {
+    const { texture, aspect } = createGlowLabelTexture(pickRandom(firingReasons))
+    // Sprite всегда повёрнут к камере — удобно для надписей
+    const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
+    )
+    const height = 0.4
+    sprite.scale.set(height * aspect, height, 1)
+    sprite.position.copy(desk.position)
+    sprite.position.y = 2.0
+    scene.add(sprite)
+
+    floatingLabels.push({ sprite, start: clock.getElapsedTime() })
+}
+
+const updateFiringLabels = (elapsedTime) => {
+    // Идём с конца массива, потому что удаляем элементы по ходу
+    for (let i = floatingLabels.length - 1; i >= 0; i--) {
+        const { sprite, start } = floatingLabels[i]
+        const t = elapsedTime - start
+
+        if (t > LABEL_LIFETIME) {
+            scene.remove(sprite)
+            sprite.material.map.dispose()
+            sprite.material.dispose()
+            floatingLabels.splice(i, 1)
+            continue
+        }
+
+        const fadeIn = Math.min(t / 0.3, 1)
+        const fadeOut = Math.min((LABEL_LIFETIME - t) / 1, 1)
+        sprite.material.opacity = Math.min(fadeIn, fadeOut)
+        sprite.position.y = 2.0 + t * 0.15
+    }
 }
 
 // power: 1 — всё горит, 0 — темнота
@@ -337,6 +416,8 @@ const resetOffice = () => {
         desk.userData.person.visible = true
         setDeskPower(desk, 1)
     }
+    story.firedCount = 0
+    story.nextFireAt = clock.getElapsedTime() + story.startDelay
 }
 
 const updateColleagues = (elapsedTime) => {
@@ -355,6 +436,207 @@ const updateColleagues = (elapsedTime) => {
             desk.userData.state = 'off'
         }
     }
+}
+
+/**
+ * Story timeline
+ * Каждое следующее увольнение происходит быстрее предыдущего:
+ * interval = firstInterval * acceleration ^ firedCount, но не меньше minInterval
+ */
+const story = {
+    autoplay: true,
+    startDelay: 3,
+    firstInterval: 9,
+    acceleration: 0.9,
+    minInterval: 2,
+    firedCount: 0,
+    nextFireAt: 3,
+}
+
+// 0 — начало истории, 1 — уволены все
+const getStoryProgress = () => story.firedCount / colleagues.length
+
+const updateStory = (elapsedTime) => {
+    if (!story.autoplay || elapsedTime < story.nextFireAt) return
+
+    if (fireRandomColleague()) story.firedCount++
+
+    const interval = Math.max(
+        story.minInterval,
+        story.firstInterval * story.acceleration ** story.firedCount
+    )
+    story.nextFireAt = elapsedTime + interval
+}
+
+/**
+ * News feed
+ * Карточки прилетают из темноты к голове героя. Чем дальше история — тем их больше и тем они быстрее
+ */
+const accents = {
+    news: '#ff5a5a',
+    slack: '#a78bfa',
+    email: '#f5a524',
+    calendar: '#38bdf8',
+    linkedin: '#60a5fa',
+    ai: '#34d399',
+}
+
+const newsFeed = [
+    { label: 'Breaking', text: 'New AI model writes code 40% faster than senior devs', accent: accents.news },
+    { label: 'Slack · Manager', text: 'Quick sync? 🙂', accent: accents.slack },
+    { label: 'Email · HR', text: 'Mandatory AI adoption training — due today', accent: accents.email },
+    { label: 'Breaking', text: 'Tech layoffs hit a new record this quarter', accent: accents.news },
+    { label: 'Calendar', text: 'Performance review — tomorrow, 9:00', accent: accents.calendar },
+    { label: 'LinkedIn', text: 'Your former teammate is now #OpenToWork', accent: accents.linkedin },
+    { label: 'Slack · #general', text: 'Please welcome our new AI teammate 🤖', accent: accents.slack },
+    { label: 'Changelog', text: 'Model v7 is out. v6 is deprecated (released 3 weeks ago)', accent: accents.ai },
+    { label: 'Breaking', text: 'Markets fall amid recession fears', accent: accents.news },
+    { label: 'Email · CEO', text: 'We are becoming an AI-first company', accent: accents.email },
+    { label: 'Slack · Manager', text: 'Why is the ticket still in progress?', accent: accents.slack },
+    { label: 'Breaking', text: 'Experts: 2 years left for most junior roles', accent: accents.news },
+    { label: 'Calendar', text: 'All-hands: "Org changes" — 16:00', accent: accents.calendar },
+    { label: 'Changelog', text: 'Your framework is now legacy', accent: accents.ai },
+]
+
+// Одна текстура на каждый текст: если карточка повторяется, не рисуем её заново
+const cardTextures = new Map()
+const getCardTexture = (item) => {
+    if (!cardTextures.has(item.text)) cardTextures.set(item.text, createCardTexture(item))
+    return cardTextures.get(item.text)
+}
+
+const flyingCards = []
+const news = {
+    nextSpawnAt: 1.5,
+    feedIndex: 0,
+    // Интервалы и скорость в начале и в конце истории
+    spawnIntervalStart: 3.5,
+    spawnIntervalEnd: 0.5,
+    flightDurationStart: 9,
+    flightDurationEnd: 3.5,
+}
+
+const spawnCard = (item, elapsedTime) => {
+    const { texture, aspect } = getCardTexture(item)
+    const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
+    )
+    const height = 0.45
+    sprite.scale.set(height * aspect, height, 1)
+
+    // Стартовая точка — на кольце вокруг героя, где-то в темноте
+    const angle = Math.random() * Math.PI * 2
+    const radius = 8 + Math.random() * 3
+    const from = new THREE.Vector3(
+        heroHead.x + Math.cos(angle) * radius,
+        2.5 + Math.random() * 2.5,
+        heroHead.z + Math.sin(angle) * radius
+    )
+    sprite.position.copy(from)
+    scene.add(sprite)
+
+    const progress = getStoryProgress()
+    flyingCards.push({
+        sprite,
+        from,
+        baseScale: sprite.scale.clone(),
+        start: elapsedTime,
+        duration: THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, progress),
+    })
+}
+
+const updateNews = (elapsedTime) => {
+    const progress = getStoryProgress()
+
+    if (elapsedTime >= news.nextSpawnAt) {
+        spawnCard(newsFeed[news.feedIndex % newsFeed.length], elapsedTime)
+        news.feedIndex++
+        news.nextSpawnAt = elapsedTime + THREE.MathUtils.lerp(news.spawnIntervalStart, news.spawnIntervalEnd, progress)
+    }
+
+    for (let i = flyingCards.length - 1; i >= 0; i--) {
+        const card = flyingCards[i]
+        const t = (elapsedTime - card.start) / card.duration // 0 → 1
+
+        if (t >= 1) {
+            scene.remove(card.sprite)
+            card.sprite.material.dispose() // текстуру не трогаем — она в кэше
+            flyingCards.splice(i, 1)
+            continue
+        }
+
+        // t * t — медленно в начале, быстро в конце: карточка «набрасывается»
+        card.sprite.position.lerpVectors(card.from, heroHead, t * t)
+
+        // Появляется в начале, тает и уменьшается у самой головы
+        const fadeIn = Math.min(t / 0.1, 1)
+        const fadeOut = Math.min((1 - t) / 0.15, 1)
+        card.sprite.material.opacity = Math.min(fadeIn, fadeOut)
+        card.sprite.scale.copy(card.baseScale).multiplyScalar(0.4 + 0.6 * fadeOut)
+    }
+}
+
+/**
+ * Job applications
+ * Счётчик на втором мониторе: откликов всё больше, ответов — только отказы
+ */
+const rejections = [
+    "We'll get back to you",
+    'Unfortunately, we decided to move forward with other candidates',
+    'The position has been filled',
+    "We'll keep your CV on file",
+    'You are overqualified for this role',
+    'We are looking for someone with more AI experience',
+]
+
+const applications = {
+    sent: 211, // он откликается уже несколько месяцев
+    interviews: 0,
+    lastReply: rejections[0],
+    nextAt: 1,
+    interval: 1.6,
+}
+
+const drawJobScreen = () => {
+    jobScreen.redraw((context, width, height, font) => {
+        context.fillStyle = '#0d1117'
+        context.fillRect(0, 0, width, height)
+
+        context.fillStyle = '#7d8590'
+        context.font = `600 24px ${font}`
+        context.fillText('JOB APPLICATIONS', 28, 44)
+
+        context.fillStyle = '#f2f4f8'
+        context.font = `800 72px ${font}`
+        context.fillText(String(applications.sent), 28, 128)
+        context.fillStyle = '#7d8590'
+        context.font = `600 24px ${font}`
+        context.fillText('sent', 32, 160)
+
+        context.fillStyle = '#ff6b6b'
+        context.font = `800 72px ${font}`
+        context.fillText(String(applications.interviews), 300, 128)
+        context.fillStyle = '#7d8590'
+        context.font = `600 24px ${font}`
+        context.fillText('interviews', 302, 160)
+
+        context.fillStyle = '#c9d1d9'
+        context.font = `italic 500 22px ${font}`
+        const reply = applications.lastReply.length > 42
+            ? `${applications.lastReply.slice(0, 41)}…`
+            : applications.lastReply
+        context.fillText(`“${reply}”`, 28, 240)
+    })
+}
+drawJobScreen()
+
+const updateApplications = (elapsedTime) => {
+    if (elapsedTime < applications.nextAt) return
+    applications.nextAt = elapsedTime + applications.interval
+
+    applications.sent += 1 + Math.floor(Math.random() * 3)
+    if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
+    drawJobScreen()
 }
 
 /**
@@ -419,8 +701,20 @@ lightsFolder.add(heroLight, 'intensity').min(0).max(80).step(0.5).name('hero lam
 lightsFolder.add(monitorGlow, 'intensity').min(0).max(10).step(0.1).name('monitor glow')
 
 const storyFolder = gui.addFolder('Story')
+storyFolder.add(story, 'autoplay').onChange((value) => {
+    if (value) story.nextFireAt = clock.getElapsedTime() + 1
+})
+storyFolder.add(story, 'firstInterval').min(1).max(20).step(0.5).name('first interval (s)')
+storyFolder.add(story, 'acceleration').min(0.5).max(1).step(0.01)
+storyFolder.add(story, 'minInterval').min(0.5).max(5).step(0.1).name('min interval (s)')
 storyFolder.add({ fireRandomColleague }, 'fireRandomColleague').name('🔥 fire random colleague')
 storyFolder.add({ resetOffice }, 'resetOffice').name('↺ reset office')
+
+const newsFolder = gui.addFolder('News')
+newsFolder.add(news, 'spawnIntervalStart').min(0.5).max(10).step(0.1).name('interval at start')
+newsFolder.add(news, 'spawnIntervalEnd').min(0.1).max(5).step(0.1).name('interval at end')
+newsFolder.add(news, 'flightDurationStart').min(1).max(20).step(0.5).name('flight at start')
+newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight at end')
 
 /**
  * Animate
@@ -430,7 +724,11 @@ const clock = new THREE.Clock()
 const tick = () => {
     const elapsedTime = clock.getElapsedTime()
 
+    updateStory(elapsedTime)
     updateColleagues(elapsedTime)
+    updateFiringLabels(elapsedTime)
+    updateNews(elapsedTime)
+    updateApplications(elapsedTime)
 
     controls.update()
     renderer.render(scene, camera)
