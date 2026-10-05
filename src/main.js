@@ -6,7 +6,11 @@ import { createCardTexture, createGlowLabelTexture, createScreenTexture } from '
 /**
  * Base
  */
+// Панель видна только по адресу с #debug, например localhost:5173/#debug
 const gui = new GUI({ title: 'Debug' })
+const updateDebugVisibility = () => gui.show(window.location.hash === '#debug')
+updateDebugVisibility()
+window.addEventListener('hashchange', updateDebugVisibility)
 const canvas = document.querySelector('canvas.webgl')
 const scene = new THREE.Scene()
 
