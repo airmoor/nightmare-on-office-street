@@ -420,6 +420,7 @@ const resetOffice = () => {
         desk.userData.person.visible = true
         setDeskPower(desk, 1)
     }
+    removeGhosts()
     story.firedCount = 0
     story.nextFireAt = clock.getElapsedTime() + story.startDelay
 }
@@ -438,6 +439,124 @@ const updateColleagues = (elapsedTime) => {
             setDeskPower(desk, 0)
             desk.userData.person.visible = false
             desk.userData.state = 'off'
+            spawnGhost(desk, elapsedTime)
+        }
+    }
+}
+
+/**
+ * Ghosts
+ * Уволенный коллега поднимается со стула призраком с коробкой вещей и бродит по офису
+ */
+const createGhostGeometry = () => {
+    // LatheGeometry «вращает» профиль вокруг оси Y — как гончарный круг
+    const profile = [
+        new THREE.Vector2(0.3, 0),
+        new THREE.Vector2(0.29, 0.2),
+        new THREE.Vector2(0.27, 0.45),
+        new THREE.Vector2(0.24, 0.62),
+        new THREE.Vector2(0.18, 0.76),
+        new THREE.Vector2(0.1, 0.84),
+        new THREE.Vector2(0.001, 0.87),
+    ]
+    const geometry = new THREE.LatheGeometry(profile, 32)
+
+    // Делаем волнистый подол: двигаем нижние вершины вверх-вниз по синусоиде
+    const position = geometry.attributes.position
+    for (let i = 0; i < position.count; i++) {
+        if (position.getY(i) > 0.01) continue
+        const angle = Math.atan2(position.getZ(i), position.getX(i))
+        position.setY(i, Math.sin(angle * 7) * 0.05)
+    }
+    geometry.computeVertexNormals()
+
+    return geometry
+}
+
+const ghostGeometries = {
+    body: createGhostGeometry(),
+    eye: new THREE.SphereGeometry(0.035, 8, 8),
+    box: new THREE.BoxGeometry(0.34, 0.2, 0.24),
+}
+
+const ghostMaterials = {
+    body: new THREE.MeshStandardMaterial({
+        color: '#dfe8ff',
+        emissive: '#6c7fa8',
+        emissiveIntensity: 0.6,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    }),
+    eye: new THREE.MeshBasicMaterial({ color: '#0a0a0f' }),
+    box: new THREE.MeshStandardMaterial({ color: '#8a6a42', roughness: 0.9 }),
+}
+
+const GHOST_APPEAR_DURATION = 2
+const ghosts = []
+
+const createGhost = () => {
+    const ghost = new THREE.Group()
+
+    ghost.add(new THREE.Mesh(ghostGeometries.body, ghostMaterials.body))
+
+    // Глаза и коробка спереди, то есть по +z: туда призрак «смотрит»
+    for (const x of [-0.07, 0.07]) {
+        const eye = new THREE.Mesh(ghostGeometries.eye, ghostMaterials.eye)
+        eye.position.set(x, 0.66, 0.2)
+        ghost.add(eye)
+    }
+
+    const box = new THREE.Mesh(ghostGeometries.box, ghostMaterials.box)
+    box.position.set(0, 0.32, 0.3)
+    ghost.add(box)
+
+    return ghost
+}
+
+const spawnGhost = (desk, elapsedTime) => {
+    const ghost = createGhost()
+    const direction = Math.random() < 0.5 ? -1 : 1
+
+    ghost.userData = {
+        start: elapsedTime,
+        origin: desk.position.clone().add(new THREE.Vector3(0, 0, 0.65)), // стул
+        radius: 1.5 + Math.random() * 2,
+        speed: (0.15 + Math.random() * 0.2) * direction,
+        phase: Math.random() * Math.PI * 2,
+    }
+    ghost.scale.setScalar(0)
+    ghost.position.copy(ghost.userData.origin)
+    scene.add(ghost)
+    ghosts.push(ghost)
+}
+
+const removeGhosts = () => {
+    for (const ghost of ghosts) scene.remove(ghost)
+    ghosts.length = 0
+}
+
+const updateGhosts = (elapsedTime) => {
+    for (const ghost of ghosts) {
+        const { start, origin, radius, speed, phase } = ghost.userData
+        const t = elapsedTime - start
+
+        // Появление: растёт и поднимается со стула (easeOut — быстро в начале, плавно в конце)
+        const appear = Math.min(t / GHOST_APPEAR_DURATION, 1)
+        const eased = appear * (2 - appear)
+        ghost.scale.setScalar(eased)
+
+        // Потом бродит по кругу. Вычитаем cos/sin(phase), чтобы круг начинался ровно от стула
+        const wanderTime = Math.max(0, t - GHOST_APPEAR_DURATION)
+        const angle = phase + wanderTime * speed
+        ghost.position.x = origin.x + (Math.cos(angle) - Math.cos(phase)) * radius
+        ghost.position.z = origin.z + (Math.sin(angle) - Math.sin(phase)) * radius
+        ghost.position.y = THREE.MathUtils.lerp(0.3, 0.9, eased) + Math.sin(elapsedTime * 2 + phase) * 0.08
+
+        // Поворачиваем лицом по направлению движения (касательная к кругу)
+        if (wanderTime > 0) {
+            ghost.rotation.y = Math.atan2(-Math.sin(angle) * speed, Math.cos(angle) * speed)
         }
     }
 }
@@ -520,52 +639,95 @@ const news = {
     flightDurationEnd: 3.5,
 }
 
-const spawnCard = (item, elapsedTime) => {
+const SPAWN_RADIUS_MIN = 8
+const SPAWN_RADIUS_MAX = 11
+const DISMISS_DURATION = 0.25
+
+const nextFeedItem = () => newsFeed[news.feedIndex++ % newsFeed.length]
+
+// Случайная точка на кольце вокруг героя, где-то в темноте
+const randomSpawnPoint = () => {
+    const angle = Math.random() * Math.PI * 2
+    const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random())
+    return new THREE.Vector3(
+        heroHead.x + Math.cos(angle) * radius,
+        2.5 + Math.random() * 2.5,
+        heroHead.z + Math.sin(angle) * radius
+    )
+}
+
+const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
     const { texture, aspect } = getCardTexture(item)
     const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
     )
     const height = 0.45
     sprite.scale.set(height * aspect, height, 1)
-
-    // Стартовая точка — на кольце вокруг героя, где-то в темноте
-    const angle = Math.random() * Math.PI * 2
-    const radius = 8 + Math.random() * 3
-    const from = new THREE.Vector3(
-        heroHead.x + Math.cos(angle) * radius,
-        2.5 + Math.random() * 2.5,
-        heroHead.z + Math.sin(angle) * radius
-    )
     sprite.position.copy(from)
     scene.add(sprite)
 
-    const progress = getStoryProgress()
+    // Длительность полёта зависит от расстояния: карточка, родившаяся рядом, долетает быстрее
+    const baseDuration = THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, getStoryProgress())
+    const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2
+    const duration = Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
+
     flyingCards.push({
         sprite,
         from,
         baseScale: sprite.scale.clone(),
         start: elapsedTime,
-        duration: THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, progress),
+        duration,
+        dismissedAt: null,
     })
+}
+
+const removeCard = (index) => {
+    const card = flyingCards[index]
+    scene.remove(card.sprite)
+    card.sprite.material.dispose() // текстуру не трогаем — она в кэше
+    flyingCards.splice(index, 1)
+}
+
+// Закрыл одно уведомление — рядом появились два новых, как головы у гидры
+const dismissCard = (card) => {
+    const elapsedTime = clock.getElapsedTime()
+    card.dismissedAt = elapsedTime
+
+    for (let i = 0; i < 2; i++) {
+        const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
+            .normalize()
+            .multiplyScalar(0.8)
+        spawnCard(nextFeedItem(), elapsedTime, card.sprite.position.clone().add(offset))
+    }
 }
 
 const updateNews = (elapsedTime) => {
     const progress = getStoryProgress()
 
     if (elapsedTime >= news.nextSpawnAt) {
-        spawnCard(newsFeed[news.feedIndex % newsFeed.length], elapsedTime)
-        news.feedIndex++
+        spawnCard(nextFeedItem(), elapsedTime)
         news.nextSpawnAt = elapsedTime + THREE.MathUtils.lerp(news.spawnIntervalStart, news.spawnIntervalEnd, progress)
     }
 
     for (let i = flyingCards.length - 1; i >= 0; i--) {
         const card = flyingCards[i]
+
+        // Закрытая карточка коротко «лопается»: растёт и исчезает
+        if (card.dismissedAt !== null) {
+            const dismissT = (elapsedTime - card.dismissedAt) / DISMISS_DURATION
+            if (dismissT >= 1) {
+                removeCard(i)
+                continue
+            }
+            card.sprite.scale.copy(card.baseScale).multiplyScalar(1 + dismissT * 0.5)
+            card.sprite.material.opacity = 1 - dismissT
+            continue
+        }
+
         const t = (elapsedTime - card.start) / card.duration // 0 → 1
 
         if (t >= 1) {
-            scene.remove(card.sprite)
-            card.sprite.material.dispose() // текстуру не трогаем — она в кэше
-            flyingCards.splice(i, 1)
+            removeCard(i)
             continue
         }
 
@@ -689,6 +851,44 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 
 /**
+ * Pointer interaction
+ * Raycaster пускает луч из камеры через точку под курсором и ищет, во что он попал
+ */
+const raycaster = new THREE.Raycaster()
+const pointer = new THREE.Vector2()
+const pointerDownPosition = { x: 0, y: 0 }
+
+const getCardUnderPointer = (event) => {
+    // Переводим пиксели в координаты от -1 до 1, которые ждёт Raycaster
+    pointer.x = (event.clientX / sizes.width) * 2 - 1
+    pointer.y = -(event.clientY / sizes.height) * 2 + 1
+    raycaster.setFromCamera(pointer, camera)
+
+    const activeCards = flyingCards.filter((card) => card.dismissedAt === null)
+    const [hit] = raycaster.intersectObjects(activeCards.map((card) => card.sprite))
+    return hit ? activeCards.find((card) => card.sprite === hit.object) : null
+}
+
+canvas.addEventListener('pointerdown', (event) => {
+    pointerDownPosition.x = event.clientX
+    pointerDownPosition.y = event.clientY
+})
+
+canvas.addEventListener('pointerup', (event) => {
+    // Если мышь заметно сдвинулась, это был поворот камеры, а не клик
+    const moved = Math.hypot(event.clientX - pointerDownPosition.x, event.clientY - pointerDownPosition.y)
+    if (moved > 5) return
+
+    const card = getCardUnderPointer(event)
+    if (card) dismissCard(card)
+})
+
+canvas.addEventListener('pointermove', (event) => {
+    if (event.pointerType !== 'mouse') return
+    canvas.style.cursor = getCardUnderPointer(event) ? 'pointer' : ''
+})
+
+/**
  * Debug
  */
 const sceneFolder = gui.addFolder('Scene')
@@ -731,6 +931,7 @@ const tick = () => {
     updateStory(elapsedTime)
     updateColleagues(elapsedTime)
     updateFiringLabels(elapsedTime)
+    updateGhosts(elapsedTime)
     updateNews(elapsedTime)
     updateApplications(elapsedTime)
 
