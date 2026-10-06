@@ -3,11 +3,35 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Quick Sync?</title>
+    <title>Nightmare on Office Street</title>
+    <meta name="description" content="A small Halloween story about layoffs, AI hype and a guy who just wants a quiet life. Made with Three.js." />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
     <canvas class="webgl"></canvas>
+
+    <!-- Стартовый экран: нужен ещё и потому, что браузер включает звук только после клика -->
+    <section class="overlay intro" data-intro>
+      <p class="eyebrow">Halloween · Night shift</p>
+      <h1>Nightmare on<br />Office Street</h1>
+      <p class="lead">Somewhere in an open office, the lights are going out one by one.</p>
+      <button class="button" data-start>Start shift</button>
+      <p class="note">Sound on 🎧</p>
+    </section>
+
+    <p class="hint" data-hint>Click the notifications to dismiss them.<br />Good luck keeping up.</p>
+
+    <button class="button button-close" data-close hidden>Close the laptop</button>
+
+    <section class="overlay outro" data-outro hidden>
+      <h2>He just wanted a quiet, good life.</h2>
+      <p class="lead">Close the laptop sometimes. The news will still be there tomorrow.</p>
+      <button class="button button-ghost" data-restart>Start over</button>
+      <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
+    </section>
+
+    <button class="mute" data-mute aria-label="Mute sound" hidden>🔊</button>
+
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>

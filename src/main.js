@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import GUI from 'lil-gui'
 import { createCardTexture, createGlowLabelTexture, createScreenTexture } from './canvasText.js'
+import { createSound } from './sound.js'
 
 /**
  * Base
@@ -17,7 +18,12 @@ const scene = new THREE.Scene()
 const params = {
     background: '#05060a',
     fogDensity: 0.06,
+    fogDensityGrowth: 0.04, // насколько сгущается туман к концу истории
+    heroLightIntensity: 25,
+    cameraShake: 0.04,
 }
+
+const sound = createSound()
 
 scene.background = new THREE.Color(params.background)
 scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
@@ -317,7 +323,7 @@ moonLight.position.set(-8, 10, -6)
 scene.add(moonLight)
 
 // Единственный настоящий тёплый свет — над героем. Только он отбрасывает тени
-const heroLight = new THREE.SpotLight('#ffd9a0', 25, 8, Math.PI * 0.28, 0.6, 2)
+const heroLight = new THREE.SpotLight('#ffd9a0', params.heroLightIntensity, 8, Math.PI * 0.28, 0.6, 2)
 heroLight.position.set(0, 2.6, 0)
 heroLight.target.position.set(0, 0, 0.2)
 heroLight.castShadow = true
@@ -351,6 +357,7 @@ const fireColleague = (desk) => {
     desk.userData.state = 'flickering'
     desk.userData.flickerStart = clock.getElapsedTime()
     showFiringLabel(desk)
+    sound.buzz()
 }
 
 const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
@@ -537,6 +544,9 @@ const removeGhosts = () => {
     ghosts.length = 0
 }
 
+// В финале призраки растворяются: 1 → 0
+let ghostVisibility = 1
+
 const updateGhosts = (elapsedTime) => {
     for (const ghost of ghosts) {
         const { start, origin, radius, speed, phase } = ghost.userData
@@ -545,7 +555,7 @@ const updateGhosts = (elapsedTime) => {
         // Появление: растёт и поднимается со стула (easeOut — быстро в начале, плавно в конце)
         const appear = Math.min(t / GHOST_APPEAR_DURATION, 1)
         const eased = appear * (2 - appear)
-        ghost.scale.setScalar(eased)
+        ghost.scale.setScalar(eased * ghostVisibility)
 
         // Потом бродит по кругу. Вычитаем cos/sin(phase), чтобы круг начинался ровно от стула
         const wanderTime = Math.max(0, t - GHOST_APPEAR_DURATION)
@@ -580,7 +590,7 @@ const story = {
 const getStoryProgress = () => story.firedCount / colleagues.length
 
 const updateStory = (elapsedTime) => {
-    if (!story.autoplay || elapsedTime < story.nextFireAt) return
+    if (experience.phase !== 'running' || !story.autoplay || elapsedTime < story.nextFireAt) return
 
     if (fireRandomColleague()) story.firedCount++
 
@@ -679,6 +689,7 @@ const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
         duration,
         dismissedAt: null,
     })
+    sound.ping()
 }
 
 const removeCard = (index) => {
@@ -692,6 +703,7 @@ const removeCard = (index) => {
 const dismissCard = (card) => {
     const elapsedTime = clock.getElapsedTime()
     card.dismissedAt = elapsedTime
+    sound.pop()
 
     for (let i = 0; i < 2; i++) {
         const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
@@ -704,7 +716,7 @@ const dismissCard = (card) => {
 const updateNews = (elapsedTime) => {
     const progress = getStoryProgress()
 
-    if (elapsedTime >= news.nextSpawnAt) {
+    if (experience.phase === 'running' && elapsedTime >= news.nextSpawnAt) {
         spawnCard(nextFeedItem(), elapsedTime)
         news.nextSpawnAt = elapsedTime + THREE.MathUtils.lerp(news.spawnIntervalStart, news.spawnIntervalEnd, progress)
     }
@@ -797,7 +809,7 @@ const drawJobScreen = () => {
 drawJobScreen()
 
 const updateApplications = (elapsedTime) => {
-    if (elapsedTime < applications.nextAt) return
+    if (experience.phase !== 'running' || elapsedTime < applications.nextAt) return
     applications.nextAt = elapsedTime + applications.interval
 
     applications.sent += 1 + Math.floor(Math.random() * 3)
@@ -892,7 +904,9 @@ canvas.addEventListener('pointermove', (event) => {
  * Debug
  */
 const sceneFolder = gui.addFolder('Scene')
-sceneFolder.add(scene.fog, 'density').min(0).max(0.2).step(0.001).name('fog density')
+sceneFolder.add(params, 'fogDensity').min(0).max(0.2).step(0.001).name('fog density')
+sceneFolder.add(params, 'fogDensityGrowth').min(0).max(0.1).step(0.001).name('fog growth')
+sceneFolder.add(params, 'cameraShake').min(0).max(0.2).step(0.001).name('camera shake')
 sceneFolder.addColor(params, 'background').onChange((value) => {
     scene.background.set(value)
     scene.fog.color.set(value)
@@ -901,7 +915,7 @@ sceneFolder.addColor(params, 'background').onChange((value) => {
 const lightsFolder = gui.addFolder('Lights')
 lightsFolder.add(ambientLight, 'intensity').min(0).max(1).step(0.01).name('ambient')
 lightsFolder.add(moonLight, 'intensity').min(0).max(2).step(0.01).name('moon')
-lightsFolder.add(heroLight, 'intensity').min(0).max(80).step(0.5).name('hero lamp')
+lightsFolder.add(params, 'heroLightIntensity').min(0).max(80).step(0.5).name('hero lamp')
 lightsFolder.add(monitorGlow, 'intensity').min(0).max(10).step(0.1).name('monitor glow')
 
 const storyFolder = gui.addFolder('Story')
@@ -921,6 +935,179 @@ newsFolder.add(news, 'flightDurationStart').min(1).max(20).step(0.5).name('fligh
 newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight at end')
 
 /**
+ * Experience
+ * Фазы истории: intro (стартовый экран) → running → ending (закрыл ноутбук, рассвет) → done
+ */
+const experience = {
+    phase: 'intro',
+    allGoneAt: null, // когда уволили последнего коллегу
+    endingStart: 0,
+    lastIntensity: -1,
+}
+
+const ui = {
+    intro: document.querySelector('[data-intro]'),
+    start: document.querySelector('[data-start]'),
+    hint: document.querySelector('[data-hint]'),
+    close: document.querySelector('[data-close]'),
+    outro: document.querySelector('[data-outro]'),
+    restart: document.querySelector('[data-restart]'),
+    mute: document.querySelector('[data-mute]'),
+}
+
+// Пока висит стартовый экран, камера медленно облетает офис
+controls.autoRotate = true
+controls.autoRotateSpeed = 0.3
+
+const startShift = () => {
+    experience.phase = 'running'
+    sound.start()
+    controls.autoRotate = false
+
+    ui.intro.classList.add('is-hidden')
+    setTimeout(() => (ui.intro.hidden = true), 1200)
+    ui.mute.hidden = false
+
+    // Таймеры истории отсчитываем от момента старта, а не от загрузки страницы
+    const elapsedTime = clock.getElapsedTime()
+    story.nextFireAt = elapsedTime + story.startDelay
+    news.nextSpawnAt = elapsedTime + 1.5
+    applications.nextAt = elapsedTime + 1
+
+    setTimeout(() => ui.hint.classList.add('is-visible'), 2500)
+    setTimeout(() => ui.hint.classList.remove('is-visible'), 9000)
+}
+
+ui.start.addEventListener('click', startShift)
+ui.restart.addEventListener('click', () => window.location.reload())
+ui.mute.addEventListener('click', () => {
+    ui.mute.textContent = sound.toggleMute() ? '🔇' : '🔊'
+})
+
+const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
+
+/**
+ * Tension
+ * Чем больше уволено, тем гуще туман, тем чаще мигает лампа героя и сильнее дрожит камера
+ */
+const cameraShake = new THREE.Vector3()
+
+const updateTension = (elapsedTime) => {
+    if (experience.phase !== 'intro' && experience.phase !== 'running') return
+
+    const tension = experience.phase === 'running' ? getStoryProgress() : 0
+    scene.fog.density = params.fogDensity + params.fogDensityGrowth * tension
+
+    // Во второй половине истории лампа героя начинает коротить
+    let lampPower = 1
+    if (tension > 0.5 && hashNoise(Math.floor(elapsedTime * 10)) < (tension - 0.5) * 0.4) lampPower = 0.25
+    heroLight.intensity = params.heroLightIntensity * lampPower
+    setDeskPower(heroDesk, lampPower)
+
+    // tension меняется ступеньками, так что звук обновляем только при изменении
+    if (tension !== experience.lastIntensity) {
+        sound.setIntensity(tension)
+        experience.lastIntensity = tension
+    }
+
+    // Дрожание: сумма синусов разной частоты выглядит как случайный шум
+    const amplitude = params.cameraShake * tension * tension
+    cameraShake.set(
+        Math.sin(elapsedTime * 37) * Math.sin(elapsedTime * 13),
+        Math.sin(elapsedTime * 29 + 1) * Math.sin(elapsedTime * 7),
+        Math.sin(elapsedTime * 23 + 2) * Math.sin(elapsedTime * 11)
+    ).multiplyScalar(amplitude)
+
+    // Всех уволили — даём герою выход
+    if (experience.phase === 'running' && experience.allGoneAt === null
+        && colleagues.every((desk) => desk.userData.state === 'off')) {
+        experience.allGoneAt = elapsedTime
+        setTimeout(() => (ui.close.hidden = false), 2500)
+    }
+}
+
+/**
+ * Ending
+ * Герой закрывает ноутбук: экраны гаснут, призраки растворяются, тревога стихает, наступает рассвет
+ */
+const ENDING_DURATION = 8
+
+const dawn = {
+    background: new THREE.Color('#4a3640'),
+    moonColor: new THREE.Color('#ffb27a'),
+    moonIntensity: 1.4,
+    ambientIntensity: 0.35,
+    fogDensity: 0.035,
+    cameraPosition: heroDesk.position.clone().add(new THREE.Vector3(2.6, 2, 3.4)),
+    controlsTarget: heroDesk.position.clone().add(new THREE.Vector3(0, 1, 0)),
+}
+
+// Сюда в момент закрытия ноутбука запоминаем, откуда начинаем переход
+const endingFrom = {}
+
+const closeLaptop = () => {
+    const elapsedTime = clock.getElapsedTime()
+    experience.phase = 'ending'
+    experience.endingStart = elapsedTime
+    ui.close.hidden = true
+
+    for (const card of flyingCards) {
+        if (card.dismissedAt === null) card.dismissedAt = elapsedTime
+    }
+
+    heroLight.intensity = params.heroLightIntensity
+    setDeskPower(heroDesk, 1)
+    cameraShake.set(0, 0, 0)
+    sound.calm()
+    controls.enabled = false
+
+    Object.assign(endingFrom, {
+        background: scene.background.clone(),
+        fogDensity: scene.fog.density,
+        moonColor: moonLight.color.clone(),
+        moonIntensity: moonLight.intensity,
+        ambientIntensity: ambientLight.intensity,
+        monitorGlow: monitorGlow.intensity,
+        cameraPosition: camera.position.clone(),
+        controlsTarget: controls.target.clone(),
+    })
+}
+
+ui.close.addEventListener('click', closeLaptop)
+
+const updateEnding = (elapsedTime) => {
+    if (experience.phase !== 'ending') return
+
+    const t = Math.min((elapsedTime - experience.endingStart) / ENDING_DURATION, 1)
+    const eased = t * t * (3 - 2 * t) // smoothstep: плавно в начале и в конце
+    const screensOff = Math.min(t * 4, 1) // экраны гаснут в первые 2 секунды
+    const lerp = THREE.MathUtils.lerp
+
+    scene.background.lerpColors(endingFrom.background, dawn.background, eased)
+    scene.fog.color.copy(scene.background)
+    scene.fog.density = lerp(endingFrom.fogDensity, dawn.fogDensity, eased)
+
+    moonLight.color.lerpColors(endingFrom.moonColor, dawn.moonColor, eased)
+    moonLight.intensity = lerp(endingFrom.moonIntensity, dawn.moonIntensity, eased)
+    ambientLight.intensity = lerp(endingFrom.ambientIntensity, dawn.ambientIntensity, eased)
+
+    heroDesk.userData.screen.material.color.lerpColors(colors.screenOn, colors.screenOff, screensOff)
+    jobMonitorScreen.material.color.setScalar(1 - screensOff)
+    monitorGlow.intensity = endingFrom.monitorGlow * (1 - screensOff)
+
+    ghostVisibility = 1 - eased
+
+    camera.position.lerpVectors(endingFrom.cameraPosition, dawn.cameraPosition, eased)
+    controls.target.lerpVectors(endingFrom.controlsTarget, dawn.controlsTarget, eased)
+
+    if (t >= 1) {
+        experience.phase = 'done'
+        controls.enabled = true
+        ui.outro.hidden = false
+    }
+}
+
+/**
  * Animate
  */
 const clock = new THREE.Clock()
@@ -934,9 +1121,16 @@ const tick = () => {
     updateGhosts(elapsedTime)
     updateNews(elapsedTime)
     updateApplications(elapsedTime)
+    updateTension(elapsedTime)
+    updateEnding(elapsedTime)
 
     controls.update()
+
+    // Дрожание добавляем только на время рендера, чтобы оно не копилось в позиции камеры
+    camera.position.add(cameraShake)
     renderer.render(scene, camera)
+    camera.position.sub(cameraShake)
+
     window.requestAnimationFrame(tick)
 }
 
