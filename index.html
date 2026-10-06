@@ -16,7 +16,7 @@
       <h1>Nightmare on<br />Office Street</h1>
       <p class="lead">Somewhere in an open office, the lights are going out one by one.</p>
       <button class="button" data-start>Start shift</button>
-      <p class="note">Sound on 🎧</p>
+      <p class="note">Best with headphones 🎧</p>
     </section>
 
     <p class="hint" data-hint>Click the notifications to dismiss them.<br />Good luck keeping up.</p>
@@ -30,7 +30,18 @@
       <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
     </section>
 
-    <button class="mute" data-mute aria-label="Mute sound" hidden>🔊</button>
+    <!-- Кнопка звука видна всегда, даже на стартовом экране. Клавиша M делает то же самое -->
+    <button class="mute" data-mute aria-pressed="false" title="Toggle sound (M)">
+      <svg class="mute-icon mute-icon-on" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 9v6h4l5 4V5L8 9H4z" />
+        <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" />
+      </svg>
+      <svg class="mute-icon mute-icon-off" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 9v6h4l5 4V5L8 9H4z" />
+        <path d="M17 9.5l5 5M22 9.5l-5 5" fill="none" />
+      </svg>
+      <span class="mute-label" data-mute-label>Sound on</span>
+    </button>
 
     <script type="module" src="./src/main.js"></script>
   </body>

@@ -135,13 +135,49 @@ h2 {
   position: fixed;
   right: 16px;
   bottom: 16px;
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 50%;
-  font-size: 18px;
-  background: rgba(255, 255, 255, 0.08);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f2f4f8;
+  background: rgba(14, 16, 22, 0.7);
+  backdrop-filter: blur(6px);
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.mute:hover {
+  background: rgba(40, 44, 54, 0.85);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.mute-icon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.mute-icon-off,
+.mute.is-muted .mute-icon-on {
+  display: none;
+}
+
+.mute.is-muted .mute-icon-off {
+  display: block;
+}
+
+.mute.is-muted {
+  color: #9aa3b0;
 }
 
 /**
@@ -150,7 +186,7 @@ h2 {
 .hint {
   position: fixed;
   left: 50%;
-  bottom: 24px;
+  bottom: 72px; /* выше кнопки звука, чтобы не пересекаться на телефоне */
   transform: translateX(-50%);
   width: max-content;
   max-width: calc(100% - 32px);

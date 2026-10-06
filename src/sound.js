@@ -5,6 +5,54 @@
  * Браузер разрешает звук только после действия пользователя,
  * поэтому start() вызывается по клику на кнопку «Start shift»
  */
+/**
+ * iOS: по умолчанию Web Audio молчит, если включён беззвучный режим (переключатель сбоку).
+ * Safari 17+ позволяет сказать «это проигрывание медиа» через navigator.audioSession.
+ * Для старых iOS работает трюк: одновременно играть беззвучный <audio> — он переключает телефон в режим медиа
+ */
+const createSilentWavUrl = () => {
+    const sampleRate = 8000
+    const samples = 800 // 0.1 секунды
+    const buffer = new ArrayBuffer(44 + samples)
+    const view = new DataView(buffer)
+    const writeString = (offset, text) => {
+        for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
+    }
+
+    // Заголовок WAV: 8-битный моно
+    writeString(0, 'RIFF')
+    view.setUint32(4, 36 + samples, true)
+    writeString(8, 'WAVE')
+    writeString(12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, 1, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, sampleRate, true)
+    view.setUint16(32, 1, true)
+    view.setUint16(34, 8, true)
+    writeString(36, 'data')
+    view.setUint32(40, samples, true)
+    for (let i = 0; i < samples; i++) view.setUint8(44 + i, 128) // 128 — тишина для 8 бит
+
+    return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }))
+}
+
+const unlockIOSPlayback = () => {
+    if (navigator.audioSession) {
+        try {
+            navigator.audioSession.type = 'playback'
+        } catch {}
+        return
+    }
+
+    const audio = document.createElement('audio')
+    audio.src = createSilentWavUrl()
+    audio.loop = true
+    audio.setAttribute('playsinline', '')
+    audio.play().catch(() => {})
+}
+
 export const createSound = () => {
     let context = null
     let master = null
@@ -49,7 +97,7 @@ export const createSound = () => {
         gain.gain.value = 0
         const filter = context.createBiquadFilter()
         filter.type = 'lowpass'
-        filter.frequency.value = 200
+        filter.frequency.value = 320 // ниже ~200 Гц динамик телефона почти ничего не играет
 
         for (const frequency of [55, 55.7]) {
             const oscillator = context.createOscillator()
@@ -93,15 +141,20 @@ export const createSound = () => {
         const interval = 1.3 - intensity * 0.85 // от 1.3 с до 0.45 с
         if (intensity > 0.2) {
             const volume = 0.15 + intensity * 0.35
-            blip({ from: 70, to: 40, duration: 0.16, volume })
-            blip({ from: 60, to: 35, duration: 0.14, volume: volume * 0.7, delay: 0.2 })
+            // triangle вместо sine: у него есть обертоны, и удар слышно даже на динамике телефона
+            blip({ type: 'triangle', from: 90, to: 45, duration: 0.16, volume })
+            blip({ type: 'triangle', from: 75, to: 40, duration: 0.14, volume: volume * 0.7, delay: 0.2 })
         }
         heartbeatTimeout = setTimeout(scheduleHeartbeat, interval * 1000)
     }
 
     const start = () => {
         if (context) return
-        context = new AudioContext()
+        unlockIOSPlayback()
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext
+        context = new AudioContextClass()
+        context.resume() // Safari иногда создаёт контекст сразу на паузе
         master = context.createGain()
         master.gain.value = muted ? 0 : 0.8
         master.connect(context.destination)
@@ -118,7 +171,7 @@ export const createSound = () => {
         intensity = value
         if (!context) return
         rampTo(drone.gain.gain, 0.05 + value * 0.09)
-        rampTo(drone.filter.frequency, 200 + value * 700)
+        rampTo(drone.filter.frequency, 320 + value * 700)
         rampTo(hiss.gain.gain, 0.012 + value * 0.02)
     }
 
@@ -161,11 +214,18 @@ export const createSound = () => {
         }
     }
 
-    const toggleMute = () => {
-        muted = !muted
+    // Можно вызывать и до start(): тогда звук сразу начнётся выключенным
+    const setMuted = (value) => {
+        muted = value
         if (context) rampTo(master.gain, muted ? 0 : 0.8, 0.2)
-        return muted
     }
 
-    return { start, setIntensity, ping, pop, buzz, calm, toggleMute }
+    const isMuted = () => muted
+
+    // iOS ставит звук на паузу, когда вкладку свернули или пришёл звонок. Будим его по касанию
+    const resume = () => {
+        if (context && context.state !== 'running') context.resume()
+    }
+
+    return { start, resume, setIntensity, ping, pop, buzz, calm, setMuted, isMuted }
 }

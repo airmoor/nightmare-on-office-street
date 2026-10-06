@@ -27,6 +27,10 @@ npm run dev
 | `applications` / `drawJobScreen` | второй монитор: счётчик откликов и отказы, перерисовывается canvas | Textures |
 | `createGhostGeometry` / `updateGhosts` | призрак из LatheGeometry с волнистым подолом, поднимается со стула и бродит по кругу | Geometries, Animations |
 | `getCardUnderPointer` / `dismissCard` | клик по карточке: Raycaster находит спрайт, карточка лопается, рядом появляются две новые | Raycaster and Mouse Events |
+| `experience` / `startShift` | фазы истории: intro → running → ending → done, стартовый экран | — |
+| `updateTension` | туман сгущается, лампа героя коротит, камера дрожит, появляется «Close the laptop» | Animations |
+| `closeLaptop` / `updateEnding` | экраны гаснут, призраки растворяются, рассвет, камера подлетает к герою | Animations, Lights |
+| `src/sound.js` | весь звук генерируется Web Audio API: гул, шипение, сердцебиение, пинги, финальный аккорд | — |
 | `src/canvasText.js` | рисование текста на canvas → текстура (карточки, надписи, экран) | Textures |
 | Debug (lil-gui) | крутилки тумана, света, темпа истории и новостей | Debug UI |
 
@@ -42,8 +46,11 @@ npm run dev
 - [x] первый деплой на Vercel — https://nightmare-on-office-street.vercel.app/
 - [x] **Неделя 3 (19–25 окт):** призраки уволенных коллег с коробками, клик по уведомлению (Raycaster)
 - [ ] модели Kenney вместо коробок (по желанию)
-- [ ] **Неделя 4 (26 окт – 2 нов):** звук + экран «Click to start», мерцание, дрожание камеры,
-      финал, проверка на телефоне, пост в Discord **до 2 ноября 20:00**
+- [x] **Неделя 4 (26 окт – 2 нов):** звук + экран «Start shift», мерцание, дрожание камеры,
+      финал с рассветом, проверка на телефоне
+- [ ] проверить на своём реальном телефоне (звук, тапы по карточкам)
+- [ ] скриншот для поста, описание, credits
+- [ ] пост в Discord **до 2 ноября 20:00**
 
 ## Идеи для следующего шага
 

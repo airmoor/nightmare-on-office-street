@@ -832,6 +832,7 @@ window.addEventListener('resize', () => {
     sizes.pixelRatio = Math.min(window.devicePixelRatio, 2)
 
     camera.aspect = sizes.width / sizes.height
+    camera.fov = getCameraFov()
     camera.updateProjectionMatrix()
 
     renderer.setSize(sizes.width, sizes.height)
@@ -841,7 +842,10 @@ window.addEventListener('resize', () => {
 /**
  * Camera
  */
-const camera = new THREE.PerspectiveCamera(45, sizes.width / sizes.height, 0.1, 100)
+// На вертикальном экране телефона в кадр влезает мало офиса — расширяем угол обзора
+const getCameraFov = () => (sizes.width < sizes.height ? 65 : 45)
+
+const camera = new THREE.PerspectiveCamera(getCameraFov(), sizes.width / sizes.height, 0.1, 100)
 camera.position.set(7, 7.5, 11)
 scene.add(camera)
 
@@ -966,7 +970,6 @@ const startShift = () => {
 
     ui.intro.classList.add('is-hidden')
     setTimeout(() => (ui.intro.hidden = true), 1200)
-    ui.mute.hidden = false
 
     // Таймеры истории отсчитываем от момента старта, а не от загрузки страницы
     const elapsedTime = clock.getElapsedTime()
@@ -980,8 +983,45 @@ const startShift = () => {
 
 ui.start.addEventListener('click', startShift)
 ui.restart.addEventListener('click', () => window.location.reload())
-ui.mute.addEventListener('click', () => {
-    ui.mute.textContent = sound.toggleMute() ? '🔇' : '🔊'
+/**
+ * Sound toggle
+ * Выбор запоминаем в localStorage, чтобы после перезагрузки звук остался выключенным.
+ * localStorage может быть недоступен (например, в приватном режиме), поэтому оборачиваем в try/catch
+ */
+const MUTE_STORAGE_KEY = 'nightmare-office:muted'
+const muteLabel = document.querySelector('[data-mute-label]')
+
+const setMuted = (muted) => {
+    sound.setMuted(muted)
+    ui.mute.classList.toggle('is-muted', muted)
+    ui.mute.setAttribute('aria-pressed', String(muted))
+    muteLabel.textContent = muted ? 'Sound off' : 'Sound on'
+    try {
+        localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0')
+    } catch {}
+}
+
+const toggleMute = () => setMuted(!sound.isMuted())
+
+try {
+    setMuted(localStorage.getItem(MUTE_STORAGE_KEY) === '1')
+} catch {
+    setMuted(false)
+}
+
+ui.mute.addEventListener('click', toggleMute)
+
+// Если Safari приостановил звук (свернули вкладку, был звонок), возобновляем при следующем касании
+window.addEventListener('pointerdown', sound.resume)
+window.addEventListener('touchend', sound.resume) // старые iOS считают жестом только touchend
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) sound.resume()
+})
+window.addEventListener('keydown', (event) => {
+    // Не перехватываем M, когда печатают в поле Debug-панели
+    const isTyping = event.target instanceof Element && event.target.closest('input, textarea')
+    if (event.key.toLowerCase() !== 'm' || isTyping) return
+    toggleMute()
 })
 
 const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
