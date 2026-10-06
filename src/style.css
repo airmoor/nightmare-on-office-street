@@ -192,17 +192,171 @@ h2 {
  * Rules on the intro screen
  */
 .rules {
-  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #b9c0cc;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, 100%);
 }
 
-.rules strong {
+.rules-goal {
+  font-size: clamp(15px, 2vw, 17px);
+  font-weight: 600;
   color: #f2f4f8;
+  text-wrap: balance;
+}
+
+.rules-goal strong {
+  color: #ff8a3d;
+}
+
+.rules-cards {
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  width: 100%;
+}
+
+.rule-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  text-align: left;
+  background: rgba(14, 16, 22, 0.65);
+  backdrop-filter: blur(6px);
+}
+
+.rule-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #f2f4f8;
+}
+
+/* Та же «клавиша», что и в HUD, только крупнее */
+.rule-key {
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a0d05;
+  background: #ff8a3d;
+}
+
+.rule-hint {
+  font-size: 13px;
+  color: #9aa3b0;
+}
+
+.rule-effect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.rule-meter {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.rule-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.rule-card-performance .rule-effect {
+  color: #34d399;
+}
+
+.rule-card-performance .rule-meter-fill {
+  background: #34d399;
+  animation: rule-meter-up 2.4s ease-in-out infinite alternate;
+}
+
+.rule-card-stress .rule-effect {
+  color: #ff5a5a;
+}
+
+.rule-card-stress .rule-meter-fill {
+  background: #ff5a5a;
+  animation: rule-meter-down 2.4s ease-in-out infinite alternate;
+}
+
+/* Шкалы сами показывают эффект действия: performance растёт, stress падает */
+@keyframes rule-meter-up {
+  from {
+    width: 30%;
+  }
+  to {
+    width: 85%;
+  }
+}
+
+@keyframes rule-meter-down {
+  from {
+    width: 80%;
+  }
+  to {
+    width: 20%;
+  }
+}
+
+.rules-tip {
+  font-size: 13px;
+  color: #9aa3b0;
+}
+
+.rules-tip strong {
+  color: #ff8a3d;
+}
+
+@media (max-width: 520px) {
+  .rules-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Невысокие экраны: ужимаем отступы, чтобы кнопка не уезжала за край */
+@media (max-height: 760px) {
+  .intro {
+    gap: 14px;
+  }
+
+  .intro h1 {
+    font-size: clamp(36px, 7vw, 64px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rule-card-performance .rule-meter-fill {
+    animation: none;
+    width: 85%;
+  }
+
+  .rule-card-stress .rule-meter-fill {
+    animation: none;
+    width: 20%;
+  }
 }
 
 /**

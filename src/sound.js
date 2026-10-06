@@ -208,6 +208,12 @@ export const createSound = () => {
         blip({ type: 'square', from: 1800 + Math.random() * 900, to: 900, duration: 0.025, volume: 0.015 })
     }
 
+    // Герой сам выключает свою лампу: щелчок выключателя
+    const click = () => {
+        blip({ type: 'square', from: 2400, to: 1600, duration: 0.02, volume: 0.04 })
+        blip({ type: 'triangle', from: 140, to: 70, duration: 0.08, volume: 0.06, delay: 0.01 })
+    }
+
     // Карточка долетела до головы: глухой удар
     const hit = () => blip({ type: 'triangle', from: 160, to: 55, duration: 0.25, volume: 0.09 })
 
@@ -226,12 +232,13 @@ export const createSound = () => {
         oscillator.stop(now + 9.5)
     }
 
-    // Финал: тревога уходит. В спокойной концовке остаётся тихий тёплый аккорд
-    const calm = ({ chord = true } = {}) => {
+    // Финал: тревога уходит. В спокойной концовке остаётся тихий тёплый аккорд.
+    // fade — за сколько секунд затихает гул: в концовке Frozen звук обрывается почти сразу
+    const calm = ({ chord = true, fade = 4 } = {}) => {
         if (!context) return
         clearTimeout(heartbeatTimeout)
-        rampTo(drone.gain.gain, 0, 4)
-        rampTo(hiss.gain.gain, 0, 4)
+        rampTo(drone.gain.gain, 0, fade)
+        rampTo(hiss.gain.gain, 0, fade)
         if (!chord) return
 
         const now = context.currentTime
@@ -261,5 +268,5 @@ export const createSound = () => {
         if (context && context.state !== 'running') context.resume()
     }
 
-    return { start, resume, setIntensity, ping, pop, buzz, type, hit, tinnitus, calm, setMuted, isMuted }
+    return { start, resume, setIntensity, ping, pop, buzz, type, hit, click, tinnitus, calm, setMuted, isMuted }
 }

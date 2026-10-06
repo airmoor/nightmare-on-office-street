@@ -15,11 +15,29 @@
       <p class="eyebrow">Halloween · Night shift</p>
       <h1>Nightmare on<br />Office Street</h1>
       <p class="lead">Somewhere in an open office, the lights are going out one by one.</p>
-      <ul class="rules">
-        <li><strong>Hold the monitor</strong> to work — keep your performance up</li>
-        <li><strong><span data-action-word>Click</span> notifications</strong> before they reach you — keep your stress down</li>
-        <li>Dismiss several in a row for a <strong>combo</strong></li>
-      </ul>
+      <!-- Правила: цель + два действия. Шкалы в карточках того же цвета, что и в HUD -->
+      <div class="rules">
+        <p class="rules-goal">Survive until <strong>06:00</strong> — don't get fired, don't burn out</p>
+        <ul class="rules-cards">
+          <li class="rule-card rule-card-performance">
+            <p class="rule-action"><span class="rule-key">Hold</span> the monitor</p>
+            <p class="rule-hint">to work</p>
+            <p class="rule-effect">
+              <span class="rule-meter"><span class="rule-meter-fill"></span></span>
+              <span>Performance ↑</span>
+            </p>
+          </li>
+          <li class="rule-card rule-card-stress">
+            <p class="rule-action"><span class="rule-key" data-action-word>Click</span> notifications</p>
+            <p class="rule-hint">before they reach you</p>
+            <p class="rule-effect">
+              <span class="rule-meter"><span class="rule-meter-fill"></span></span>
+              <span>Stress ↓</span>
+            </p>
+          </li>
+        </ul>
+        <p class="rules-tip">Clear several in a row for a <strong>combo</strong></p>
+      </div>
       <button class="button" data-start>Start shift</button>
       <p class="note">Best with headphones 🎧</p>
     </section>

@@ -122,6 +122,9 @@ const createPerson = (shirtColor) => {
     thighs.position.set(0, 0.55, -0.15)
     person.add(thighs)
 
+    // Понадобится в концовке Logged off, когда герой встаёт и уходит
+    person.userData = { torso, thighs }
+
     return person
 }
 
@@ -321,6 +324,14 @@ const workHitbox = new THREE.Mesh(
 )
 workHitbox.position.set(0, 1.1, -0.1)
 heroDesk.add(workHitbox)
+
+// Такая же невидимая сфера вокруг лампы героя: по ней можно выключить свет и уйти (концовка Logged off)
+const lampHitbox = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 8, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+)
+lampHitbox.position.set(0, 2.65, 0)
+heroDesk.add(lampHitbox)
 
 /**
  * Lights
@@ -558,6 +569,14 @@ const removeGhosts = () => {
 // В финале призраки растворяются: 1 → 0
 let ghostVisibility = 1
 
+// В концовке Logged off призраки останавливаются и смотрят, как герой уходит
+const ghostWatch = {
+    pausedAt: null, // с какого момента призраки стоят на месте
+    target: null, // на кого смотрят (точка в сцене)
+}
+
+const ghostTarget = new THREE.Vector3()
+
 const updateGhosts = (elapsedTime) => {
     for (const ghost of ghosts) {
         const { start, origin, radius, speed, phase } = ghost.userData
@@ -568,15 +587,23 @@ const updateGhosts = (elapsedTime) => {
         const eased = appear * (2 - appear)
         ghost.scale.setScalar(eased * ghostVisibility)
 
-        // Потом бродит по кругу. Вычитаем cos/sin(phase), чтобы круг начинался ровно от стула
-        const wanderTime = Math.max(0, t - GHOST_APPEAR_DURATION)
+        // Потом бродит по кругу. Вычитаем cos/sin(phase), чтобы круг начинался ровно от стула.
+        // Если призраки остановились — время блуждания замирает на моменте остановки
+        const walkedTime = ghostWatch.pausedAt === null ? t : Math.min(t, ghostWatch.pausedAt - start)
+        const wanderTime = Math.max(0, walkedTime - GHOST_APPEAR_DURATION)
         const angle = phase + wanderTime * speed
         ghost.position.x = origin.x + (Math.cos(angle) - Math.cos(phase)) * radius
         ghost.position.z = origin.z + (Math.sin(angle) - Math.sin(phase)) * radius
         ghost.position.y = THREE.MathUtils.lerp(0.3, 0.9, eased) + Math.sin(elapsedTime * 2 + phase) * 0.08
 
-        // Поворачиваем лицом по направлению движения (касательная к кругу)
-        if (wanderTime > 0) {
+        if (ghostWatch.target) {
+            // Медленно поворачиваемся к герою. Призрак «смотрит» по +z, поэтому atan2(dx, dz)
+            ghostTarget.copy(ghostWatch.target).sub(ghost.position)
+            const targetAngle = Math.atan2(ghostTarget.x, ghostTarget.z)
+            const turn = Math.atan2(Math.sin(targetAngle - ghost.rotation.y), Math.cos(targetAngle - ghost.rotation.y))
+            ghost.rotation.y += turn * 0.05
+        } else if (wanderTime > 0) {
+            // Поворачиваем лицом по направлению движения (касательная к кругу)
             ghost.rotation.y = Math.atan2(-Math.sin(angle) * speed, Math.cos(angle) * speed)
         }
     }
@@ -716,6 +743,10 @@ const dismissCard = (card) => {
     card.dismissedAt = elapsedTime
     sound.pop()
     addDismissScore(card.sprite.position)
+    if (experience.phase === 'running') {
+        game.dismissed++
+        game.lastActionAt = elapsedTime
+    }
     game.stress = Math.max(0, game.stress - game.stressReliefPerDismiss)
 
     if (Math.random() < game.respawnChance) {
@@ -748,6 +779,9 @@ const updateNews = (elapsedTime) => {
             card.sprite.material.opacity = 1 - dismissT
             continue
         }
+
+        // Концовка Frozen: время остановилось, карточки так и висят в воздухе вокруг героя
+        if (experience.cardsFrozen) continue
 
         const t = (elapsedTime - card.start) / card.duration // 0 → 1
 
@@ -805,7 +839,8 @@ const drawJobScreen = () => {
         context.font = `600 24px ${font}`
         context.fillText('sent', 32, 160)
 
-        context.fillStyle = '#ff6b6b'
+        // Ноль интервью — красный. Первое приглашение (только на рассвете) — зелёное
+        context.fillStyle = applications.interviews > 0 ? '#34d399' : '#ff6b6b'
         context.font = `800 72px ${font}`
         context.fillText(String(applications.interviews), 300, 128)
         context.fillStyle = '#7d8590'
@@ -925,13 +960,16 @@ const getCardUnderPointer = (event) => {
     return closestCard
 }
 
-const isPointerOnMonitor = (event) => {
+const isPointerOn = (event, object) => {
     // Переводим пиксели в координаты от -1 до 1, которые ждёт Raycaster
     pointer.x = (event.clientX / sizes.width) * 2 - 1
     pointer.y = -(event.clientY / sizes.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
-    return raycaster.intersectObject(workHitbox).length > 0
+    return raycaster.intersectObject(object).length > 0
 }
+
+const isPointerOnMonitor = (event) => isPointerOn(event, workHitbox)
+const isPointerOnLamp = (event) => canLogOff() && isPointerOn(event, lampHitbox)
 
 // Пока палец или кнопка мыши заняты карточкой или монитором, камеру не крутим
 let isPointerBusy = false
@@ -964,7 +1002,11 @@ canvas.addEventListener('pointerdown', (event) => {
     if (isPointerOnMonitor(event)) {
         game.working = true
         holdPointer()
+        return
     }
+
+    // Нажали на свою лампу — выключил свет и ушёл
+    if (isPointerOnLamp(event)) startEnding('loggedOff')
 })
 
 canvas.addEventListener('pointerup', releasePointer)
@@ -974,7 +1016,8 @@ canvas.addEventListener('pointerleave', releasePointer)
 
 canvas.addEventListener('pointermove', (event) => {
     if (event.pointerType !== 'mouse') return
-    const isInteractive = experience.phase === 'running' && (getCardUnderPointer(event) || isPointerOnMonitor(event))
+    const isInteractive = experience.phase === 'running'
+        && (getCardUnderPointer(event) || isPointerOnMonitor(event) || isPointerOnLamp(event))
     canvas.style.cursor = isInteractive ? 'pointer' : ''
 })
 
@@ -1019,9 +1062,11 @@ newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight 
  */
 const experience = {
     phase: 'intro',
-    ending: null, // 'calm' | 'fired' | 'burnout'
+    ending: null, // 'calm' | 'fired' | 'burnout' | 'frozen' | 'loggedOff'
     endingsFound: new Set(),
     endingTime: '',
+    endingStats: null, // цифры этой ночи для текста концовки: время, сколько закрыл, сколько пропустил
+    cardsFrozen: false, // концовка Frozen: карточки замирают в воздухе
     aftermathShown: false, // для концовки burnout: показали ли уже пустой офис после вспышки
     endingStart: 0,
     lastIntensity: -1,
@@ -1049,7 +1094,12 @@ const ui = {
     whiteout: document.querySelector('[data-whiteout]'),
     outroEnding: document.querySelector('[data-outro-ending]'),
     outroTitle: document.querySelector('[data-outro-title]'),
+    outroMeta: document.querySelector('[data-outro-meta]'),
     outroLead: document.querySelector('[data-outro-lead]'),
+    outroSting: document.querySelector('[data-outro-sting]'),
+    outroStingSender: document.querySelector('[data-outro-sting-sender]'),
+    outroStingTime: document.querySelector('[data-outro-sting-time]'),
+    outroStingText: document.querySelector('[data-outro-sting-text]'),
     outroFound: document.querySelector('[data-outro-found]'),
     outroScore: document.querySelector('[data-outro-score]'),
     score: document.querySelector('[data-score]'),
@@ -1230,6 +1280,11 @@ const game = {
     stressDecay: 1.5, // сколько Stress в секунду уходит само
     respawnChance: 0.5, // шанс, что на месте закрытой карточки появится новая
 
+    // Что игрок делал этой ночью — по этому выбираем концовку и пишем её текст
+    dismissed: 0, // сколько уведомлений закрыл
+    missed: 0, // сколько долетело до головы
+    lastActionAt: null, // когда последний раз работал или закрывал карточку
+
     // Очки
     score: 0,
     combo: 0, // сколько карточек закрыто подряд без пропущенных
@@ -1327,6 +1382,7 @@ gameFolder.add(game, 'respawnChance').min(0).max(1).step(0.05).name('respawn cha
 const onCardHit = () => {
     if (experience.phase !== 'running' || shift.over) return
     game.stress = Math.min(100, game.stress + game.stressPerHit)
+    game.missed++
     game.hitFlash = 1
     sound.hit()
 
@@ -1368,6 +1424,7 @@ const updateGame = (elapsedTime, deltaTime) => {
     const work = game.working ? game.workRate : 0
     if (game.working) {
         game.hasWorked = true
+        game.lastActionAt = elapsedTime
         game.score += game.workPointsPerSecond * deltaTime
     }
     game.performance = THREE.MathUtils.clamp(game.performance + (work - decay) * deltaTime, 0, 100)
@@ -1391,57 +1448,147 @@ const updateGame = (elapsedTime, deltaTime) => {
     setMeter(ui.stress, game.stress, game.stress > 100 - DANGER_LEVEL)
     ui.vignette.style.opacity = Math.min(1, (game.stress / 100) * params.vignetteStrength + game.hitFlash * 0.3)
 
-    if (game.performance <= 0) startEnding('fired')
+    if (game.performance <= 0) startEnding(isFrozen(elapsedTime) ? 'frozen' : 'fired')
+}
+
+/**
+ * Frozen или Very responsive
+ * Обе концовки — Performance упала до нуля. Но если игрок всё это время закрывал уведомления,
+ * его уволили за «отзывчивость». А если просто сидел и смотрел — он замер
+ */
+const FROZEN_AFTER = 8 // столько секунд без единого действия — и герой «замер»
+const RESPONSIVE_MIN_DISMISSED = 5
+
+const isFrozen = (elapsedTime) =>
+    game.lastActionAt === null
+    || elapsedTime - game.lastActionAt > FROZEN_AFTER
+    || game.dismissed < RESPONSIVE_MIN_DISMISSED
+
+// Выключить свою лампу можно только во второй половине ночи — когда она сама начинает коротить
+const LOG_OFF_FROM = 0.5
+const canLogOff = () => experience.phase === 'running' && !shift.over && getStoryProgress() >= LOG_OFF_FROM
+
+/**
+ * Lamp hint
+ * Тусклая надпись у лампы героя — тихий намёк, что можно просто уйти
+ */
+const lampHintTexture = createGlowLabelTexture('switch it off?', '#ffd9a0')
+const lampHint = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: lampHintTexture.texture, transparent: true, depthWrite: false, opacity: 0 })
+)
+lampHint.scale.set(0.2 * lampHintTexture.aspect, 0.2, 1)
+const lampHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 3.05, 0))
+lampHint.position.copy(lampHintBase)
+scene.add(lampHint)
+
+const updateLampHint = (elapsedTime) => {
+    // Дышит медленно и еле заметно — в отличие от яркой HOLD TO WORK
+    const target = canLogOff() ? 0.25 + 0.2 * Math.sin(elapsedTime * 1.2) : 0
+    lampHint.material.opacity += (target - lampHint.material.opacity) * 0.05
+    lampHint.position.y = lampHintBase.y + Math.sin(elapsedTime * 0.8) * 0.04
 }
 
 /**
  * Endings
- * calm — дожил до 06:00 и ушёл домой: экраны гаснут, призраки растворяются, рассвет
- * fired — Performance упала до нуля: лампа героя гаснет, и он сам становится призраком
- * burnout — Stress дошёл до 100: вспышка и звон в ушах, потом тёмный пустой офис
+ * Каждая концовка — последнее уведомление героя: отправитель, заголовок, текст.
+ * В текст подставляются цифры именно этой ночи (stats), поэтому lead — функция
+ *
+ * calm      — дожил до 06:00 и ушёл домой: призраки уходят с рассветом, на втором мониторе — первое приглашение
+ * fired     — Performance = 0, но он всю ночь закрывал уведомления: увольнение «за отзывчивость»
+ * frozen    — Performance = 0, а он просто сидел: время замирает, карточки висят в воздухе
+ * burnout   — Stress = 100: вспышка и звон в ушах, потом тёмный пустой офис
+ * loggedOff — секретная: сам выключил свою лампу и ушёл, призраки смотрят ему вслед
  */
 const endings = {
     calm: {
         icon: '🌅',
         name: 'Made it to morning',
         accent: '#ff8a3d',
-        title: 'He made it through the night.',
-        lead: 'He just wanted a quiet, good life. The news will still be there tomorrow — so will the sunrise.',
         duration: 8,
+        sender: 'Sunrise',
+        time: () => '06:00',
+        title: 'The ghosts left at dawn.',
+        lead: (stats) => [
+            'That’s the rule: they can’t stay in daylight. He can. Barely.',
+            `On the second screen, after ${stats.applications} applications: “Are you free Tuesday?”`,
+        ],
+        // Через пару секунд после финала — ещё одно уведомление. Ночь пережита, но ничего не закончилось
+        sting: { sender: 'Slack · Manager', time: '06:01', text: 'Morning! Quick sync? 🙂' },
     },
     fired: {
         icon: '👻',
-        name: 'Let go',
+        name: 'Very responsive',
         accent: '#ff5a5a',
-        title: 'He answered every notification.',
-        lead: 'There was no time left for the work. Not everything that pings needs an answer.',
         duration: 7,
+        sender: 'Calendar · HR',
+        title: 'Quick sync? 🙂',
+        meta: '15 min · no agenda · camera on',
+        lead: (stats) => [
+            `He answered ${stats.dismissed} notifications tonight.${stats.missed === 0 ? ' Every single one.' : ''} Nobody answered his.`,
+            'Please bring your badge. You won’t need it after.',
+        ],
+    },
+    frozen: {
+        icon: '🧊',
+        name: 'Frozen',
+        accent: '#7dd3fc',
+        duration: 7,
+        sender: 'Slack · Manager',
+        time: (stats) => `seen ${stats.frozenSince}`,
+        title: 'are you still there?',
+        lead: (stats) => [
+            `He hadn’t moved since ${stats.frozenSince}. The ghosts drifted past his desk and didn’t look twice. They thought he was one of them.`,
+            'His status still says 🟢 Active.',
+        ],
     },
     burnout: {
         icon: '🔥',
-        name: 'Burnout',
+        name: 'Out of office',
         accent: '#9fb4d9',
-        title: 'He tried to carry all of it.',
-        lead: 'Every headline, every task, every ping. Nobody can. Rest is part of the work.',
         duration: 7,
+        sender: 'Automatic reply',
+        title: 'I’m out of office.',
+        lead: () => [
+            'I don’t know when I’ll be back.',
+            'For anything urgent, please contact my replacement. It has already read your message.',
+        ],
+    },
+    loggedOff: {
+        icon: '🚪',
+        name: 'Logged off',
+        accent: '#ffd9a0',
+        duration: 9,
+        sender: 'Status · Offline',
+        title: 'He switched off his own lamp.',
+        lead: (stats) => [
+            'Every other light in this office was switched off by someone else.',
+            `${stats.unread} unread. They’ll keep.`,
+        ],
+        scoreCounts: false, // счёт этой ночи не считается — и это нормально
     },
 }
 
 const ENDINGS_STORAGE_KEY = 'nightmare-office:endings'
 const BEST_SCORE_STORAGE_KEY = 'nightmare-office:best'
 
-// Сохраняет рекорд и сообщает, побит ли он
-const saveBestScore = (score) => {
+const getBestScore = () => {
     try {
-        const previousBest = Number(localStorage.getItem(BEST_SCORE_STORAGE_KEY)) || 0
-        if (score > previousBest) localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(score))
-        return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
+        return Number(localStorage.getItem(BEST_SCORE_STORAGE_KEY)) || 0
     } catch {
-        return { best: score, isNewBest: false }
+        return 0
     }
 }
 
-// Какие концовки зритель уже видел — храним в localStorage, чтобы показывать «2/3»
+// Сохраняет рекорд и сообщает, побит ли он
+const saveBestScore = (score) => {
+    const previousBest = getBestScore()
+    try {
+        if (score > previousBest) localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(score))
+    } catch {}
+    return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
+}
+
+// Какие концовки зритель уже видел — храним в localStorage, чтобы показывать «2/5»
 const saveEnding = (kind) => {
     try {
         const found = new Set(JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]'))
@@ -1473,12 +1620,22 @@ const endingFrom = {}
 const startEnding = (kind) => {
     if (experience.phase !== 'running') return
     const elapsedTime = clock.getElapsedTime()
+    const shiftTime = (time) => formatShiftTime(getShiftFraction(time))
+    const stillFlying = flyingCards.filter((card) => card.dismissedAt === null).length
 
     experience.phase = 'ending'
     experience.ending = kind
     experience.endingStart = elapsedTime
     experience.endingsFound = saveEnding(kind)
-    experience.endingTime = formatShiftTime(getShiftFraction(elapsedTime))
+    experience.endingTime = shiftTime(elapsedTime)
+    experience.endingStats = {
+        time: experience.endingTime,
+        frozenSince: shiftTime(game.lastActionAt ?? shift.start),
+        dismissed: game.dismissed,
+        missed: game.missed,
+        unread: game.missed + stillFlying,
+        applications: applications.sent,
+    }
     if (kind === 'calm') game.score += game.calmBonus
 
     ui.shiftOver.hidden = true
@@ -1489,8 +1646,12 @@ const startEnding = (kind) => {
     cameraShake.set(0, 0, 0)
     controls.enabled = false
 
-    for (const card of flyingCards) {
-        if (card.dismissedAt === null) card.dismissedAt = elapsedTime
+    // Frozen: карточки остаются висеть там, где их застала остановка времени. В остальных — тают
+    experience.cardsFrozen = kind === 'frozen'
+    if (!experience.cardsFrozen) {
+        for (const card of flyingCards) {
+            if (card.dismissedAt === null) card.dismissedAt = elapsedTime
+        }
     }
 
     Object.assign(endingFrom, {
@@ -1507,30 +1668,58 @@ const startEnding = (kind) => {
     if (kind === 'calm') {
         heroLight.intensity = params.heroLightIntensity
         setDeskPower(heroDesk, 1)
+        // Первое приглашение за всю историю откликов
+        applications.interviews = 1
+        applications.lastReply = 'Are you free Tuesday?'
+        drawJobScreen()
         sound.calm()
     } else if (kind === 'fired') {
         showFiringLabel(heroDesk, 'LOW PERFORMANCE')
         sound.buzz()
         sound.calm({ chord: false })
+    } else if (kind === 'frozen') {
+        // Звук обрывается почти сразу — как будто время остановилось
+        sound.calm({ chord: false, fade: 0.4 })
     } else if (kind === 'burnout') {
         ui.whiteout.classList.add('is-visible')
         sound.tinnitus()
         sound.calm({ chord: false })
+    } else if (kind === 'loggedOff') {
+        // Свет и экраны гаснут сразу — он сам нажал на выключатель
+        sound.click()
+        heroLight.intensity = 0
+        setDeskPower(heroDesk, 0)
+        jobMonitorScreen.material.color.setScalar(0)
+        monitorGlow.intensity = 0
+        // Призраки останавливаются и смотрят ему вслед
+        ghostWatch.pausedAt = elapsedTime
+        ghostWatch.target = new THREE.Vector3()
+        sound.calm()
     }
 }
 
+let stingTimeout = null
 
 const showOutro = (kind) => {
     const ending = endings[kind]
+    const stats = experience.endingStats
     ui.outroCard.style.setProperty('--accent', ending.accent)
-    ui.outroEnding.textContent = `Ending · ${ending.name}`
-    ui.outroTime.textContent = kind === 'calm' ? '06:00' : `at ${experience.endingTime}`
+    ui.outroEnding.textContent = ending.sender
+    ui.outroTime.textContent = ending.time ? ending.time(stats) : stats.time
     ui.outroTitle.textContent = ending.title
-    ui.outroLead.textContent = ending.lead
+    ui.outroMeta.textContent = ending.meta ?? ''
+    ui.outroMeta.hidden = !ending.meta
+    ui.outroLead.replaceChildren(...ending.lead(stats).map((text) => {
+        const paragraph = document.createElement('p')
+        paragraph.textContent = text
+        return paragraph
+    }))
 
+    // В концовке Logged off счёт не считается: рекорд не обновляем, а вместо цифры — честная надпись
+    const scoreCounts = ending.scoreCounts !== false
     const score = Math.floor(game.score)
-    const { best, isNewBest } = saveBestScore(score)
-    ui.outroScore.textContent = score
+    const { best, isNewBest } = scoreCounts ? saveBestScore(score) : { best: getBestScore(), isNewBest: false }
+    ui.outroScore.textContent = scoreCounts ? score : 'didn’t count'
     ui.outroBest.innerHTML = isNewBest ? `${best}<span class="new-best">New best!</span>` : String(best)
 
     // Все концовки: найденные — с иконкой и названием, ненайденные — «???»
@@ -1547,6 +1736,18 @@ const showOutro = (kind) => {
     }))
 
     ui.outro.hidden = false
+
+    // Последнее уведомление приходит, когда кажется, что всё уже закончилось
+    if (ending.sting) {
+        clearTimeout(stingTimeout)
+        stingTimeout = setTimeout(() => {
+            ui.outroStingSender.textContent = ending.sting.sender
+            ui.outroStingTime.textContent = ending.sting.time
+            ui.outroStingText.textContent = ending.sting.text
+            ui.outroSting.hidden = false
+            sound.ping()
+        }, 2500)
+    }
 }
 
 const updateCalmEnding = (t, eased) => {
@@ -1561,10 +1762,11 @@ const updateCalmEnding = (t, eased) => {
     moonLight.intensity = lerp(endingFrom.moonIntensity, dawn.moonIntensity, eased)
     ambientLight.intensity = lerp(endingFrom.ambientIntensity, dawn.ambientIntensity, eased)
 
+    // Рабочий экран гаснет, а второй монитор с приглашением остаётся гореть
     heroDesk.userData.screen.material.color.lerpColors(colors.screenOn, colors.screenOff, screensOff)
-    jobMonitorScreen.material.color.setScalar(1 - screensOff)
     monitorGlow.intensity = endingFrom.monitorGlow * (1 - screensOff)
 
+    // Призраки не выносят дневного света
     ghostVisibility = 1 - eased
 }
 
@@ -1611,6 +1813,43 @@ const updateBurnoutEnding = (elapsedTime) => {
     ui.whiteout.classList.remove('is-visible') // CSS плавно уберёт вспышку
 }
 
+// Logged off: секунду сидит в темноте, потом встаёт, отходит от стола и уходит по проходу во тьму
+const LOG_OFF_STAND_AT = 1.2
+const LOG_OFF_WALK_AT = 2.4
+const LOG_OFF_AISLE_Z = 1.5 // проход между рядами столов, в координатах стола
+const LOG_OFF_SPEED = 1.1
+
+const updateLoggedOffEnding = (elapsedTime) => {
+    const t = elapsedTime - experience.endingStart
+    const { person } = heroDesk.userData
+    const { torso, thighs } = person.userData
+
+    // Призраки смотрят туда, где сейчас герой
+    heroDesk.localToWorld(ghostWatch.target.copy(person.position).setY(1))
+
+    if (t < LOG_OFF_STAND_AT) return
+
+    // Встаёт: ноги вертикально, спина прямо
+    torso.rotation.x = 0
+    thighs.rotation.x = Math.PI / 2
+    thighs.scale.z = 1.9
+    thighs.position.set(0, 0.4, 0)
+    const step = Math.abs(Math.sin(t * 8)) * 0.03
+
+    if (t < LOG_OFF_WALK_AT) {
+        // Отходит от стола в проход, повернувшись спиной к монитору
+        const back = (t - LOG_OFF_STAND_AT) / (LOG_OFF_WALK_AT - LOG_OFF_STAND_AT)
+        person.rotation.y = Math.PI
+        person.position.set(0, 0.1 + step, THREE.MathUtils.lerp(0.65, LOG_OFF_AISLE_Z, back))
+        return
+    }
+
+    // Поворачивается и уходит по проходу в темноту, прочь от камеры
+    const walked = (t - LOG_OFF_WALK_AT) * LOG_OFF_SPEED
+    person.rotation.y = THREE.MathUtils.lerp(Math.PI, Math.PI / 2, Math.min(walked * 2, 1))
+    person.position.set(-walked, 0.1 + step, LOG_OFF_AISLE_Z)
+}
+
 const updateEnding = (elapsedTime) => {
     if (experience.phase !== 'ending') return
 
@@ -1621,6 +1860,7 @@ const updateEnding = (elapsedTime) => {
     if (kind === 'calm') updateCalmEnding(t, eased)
     if (kind === 'fired') updateFiredEnding(elapsedTime)
     if (kind === 'burnout') updateBurnoutEnding(elapsedTime)
+    if (kind === 'loggedOff') updateLoggedOffEnding(elapsedTime)
 
     camera.position.lerpVectors(endingFrom.cameraPosition, endingCamera.position, eased)
     controls.target.lerpVectors(endingFrom.controlsTarget, endingCamera.target, eased)
@@ -1628,6 +1868,8 @@ const updateEnding = (elapsedTime) => {
     if (t >= 1) {
         experience.phase = 'done'
         controls.enabled = true
+        // Ушёл — его больше нет в офисе
+        if (kind === 'loggedOff') heroDesk.userData.person.visible = false
         showOutro(kind)
     }
 }
@@ -1653,6 +1895,7 @@ const tick = () => {
     updateTension(elapsedTime)
     updateGame(elapsedTime, deltaTime) // после updateTension: поверх его цвета экрана рисуем «работу»
     updateHoldHint(elapsedTime)
+    updateLampHint(elapsedTime)
     updateEnding(elapsedTime)
 
     controls.update()
