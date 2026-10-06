@@ -18,7 +18,8 @@ const scene = new THREE.Scene()
 const params = {
     background: '#05060a',
     fogDensity: 0.06,
-    fogDensityGrowth: 0.04, // насколько сгущается туман к концу истории
+    fogDensityGrowth: 0.015, // насколько сгущается туман к концу истории
+    vignetteStrength: 0.55, // насколько темнеют края экрана при максимальном стрессе
     heroLightIntensity: 25,
     cameraShake: 0.04,
 }
@@ -87,6 +88,7 @@ const colors = {
     bulbOff: new THREE.Color('#1a1a1a'),
     screenOn: new THREE.Color('#5d8bd6'),
     screenOff: new THREE.Color('#050608'),
+    screenWork: new THREE.Color('#9be7c4'), // экран героя, пока он работает
 }
 
 /**
@@ -311,6 +313,15 @@ heroDesk.add(jobMonitor)
 // Точка, в которую летят все новости — голова героя
 const heroHead = heroDesk.position.clone().add(new THREE.Vector3(0, 1.5, 0.57))
 
+// Невидимая коробка вокруг монитора героя: по ней проще попасть пальцем, чем по самому экрану.
+// visible: false в материале — меш не рисуется, но Raycaster его всё равно находит
+const workHitbox = new THREE.Mesh(
+    new THREE.BoxGeometry(1, 0.8, 0.6),
+    new THREE.MeshBasicMaterial({ visible: false })
+)
+workHitbox.position.set(0, 1.1, -0.1)
+heroDesk.add(workHitbox)
+
 /**
  * Lights
  */
@@ -377,8 +388,8 @@ const fireRandomColleague = () => {
 const LABEL_LIFETIME = 3.5
 const floatingLabels = []
 
-const showFiringLabel = (desk) => {
-    const { texture, aspect } = createGlowLabelTexture(pickRandom(firingReasons))
+const showFiringLabel = (desk, reason = pickRandom(firingReasons)) => {
+    const { texture, aspect } = createGlowLabelTexture(reason)
     // Sprite всегда повёрнут к камере — удобно для надписей
     const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
@@ -644,7 +655,7 @@ const news = {
     feedIndex: 0,
     // Интервалы и скорость в начале и в конце истории
     spawnIntervalStart: 3.5,
-    spawnIntervalEnd: 0.5,
+    spawnIntervalEnd: 0.9,
     flightDurationStart: 9,
     flightDurationEnd: 3.5,
 }
@@ -699,13 +710,15 @@ const removeCard = (index) => {
     flyingCards.splice(index, 1)
 }
 
-// Закрыл одно уведомление — рядом появились два новых, как головы у гидры
+// Закрыл уведомление — стало чуть спокойнее, но иногда на его месте тут же появляется новое
 const dismissCard = (card) => {
     const elapsedTime = clock.getElapsedTime()
     card.dismissedAt = elapsedTime
     sound.pop()
+    addDismissScore(card.sprite.position)
+    game.stress = Math.max(0, game.stress - game.stressReliefPerDismiss)
 
-    for (let i = 0; i < 2; i++) {
+    if (Math.random() < game.respawnChance) {
         const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
             .normalize()
             .multiplyScalar(0.8)
@@ -716,7 +729,7 @@ const dismissCard = (card) => {
 const updateNews = (elapsedTime) => {
     const progress = getStoryProgress()
 
-    if (experience.phase === 'running' && elapsedTime >= news.nextSpawnAt) {
+    if (experience.phase === 'running' && !shift.over && elapsedTime >= news.nextSpawnAt) {
         spawnCard(nextFeedItem(), elapsedTime)
         news.nextSpawnAt = elapsedTime + THREE.MathUtils.lerp(news.spawnIntervalStart, news.spawnIntervalEnd, progress)
     }
@@ -740,6 +753,7 @@ const updateNews = (elapsedTime) => {
 
         if (t >= 1) {
             removeCard(i)
+            onCardHit()
             continue
         }
 
@@ -872,36 +886,96 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping
  */
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
-const pointerDownPosition = { x: 0, y: 0 }
+const cardScreenPosition = new THREE.Vector3()
 
+// Запас вокруг карточки в пикселях: по летящей цели трудно попасть точно, поэтому прощаем промах
+const CARD_HIT_PADDING = 18
+
+/**
+ * Ищем карточку под курсором прямо в пикселях экрана, а не лучом:
+ * так можно добавить запас вокруг карточки, и попасть по ней намного проще
+ */
 const getCardUnderPointer = (event) => {
+    const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
+    let closestCard = null
+    let closestDistance = Infinity
+
+    for (const card of flyingCards) {
+        if (card.dismissedAt !== null) continue
+
+        cardScreenPosition.copy(card.sprite.position).project(camera)
+        if (cardScreenPosition.z > 1) continue // карточка за камерой
+        const x = (cardScreenPosition.x + 1) / 2 * sizes.width
+        const y = (1 - cardScreenPosition.y) / 2 * sizes.height
+
+        // Сколько пикселей экрана занимает одна единица сцены на расстоянии карточки
+        const distance = camera.position.distanceTo(card.sprite.position)
+        const pixelsPerUnit = sizes.height / (2 * distance * tanHalfFov)
+        const halfWidth = card.sprite.scale.x * pixelsPerUnit / 2 + CARD_HIT_PADDING
+        const halfHeight = card.sprite.scale.y * pixelsPerUnit / 2 + CARD_HIT_PADDING
+
+        const isInside = Math.abs(event.clientX - x) <= halfWidth && Math.abs(event.clientY - y) <= halfHeight
+        // Если карточки перекрываются, берём ближайшую к камере — она нарисована сверху
+        if (isInside && distance < closestDistance) {
+            closestCard = card
+            closestDistance = distance
+        }
+    }
+
+    return closestCard
+}
+
+const isPointerOnMonitor = (event) => {
     // Переводим пиксели в координаты от -1 до 1, которые ждёт Raycaster
     pointer.x = (event.clientX / sizes.width) * 2 - 1
     pointer.y = -(event.clientY / sizes.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
+    return raycaster.intersectObject(workHitbox).length > 0
+}
 
-    const activeCards = flyingCards.filter((card) => card.dismissedAt === null)
-    const [hit] = raycaster.intersectObjects(activeCards.map((card) => card.sprite))
-    return hit ? activeCards.find((card) => card.sprite === hit.object) : null
+// Пока палец или кнопка мыши заняты карточкой или монитором, камеру не крутим
+let isPointerBusy = false
+
+const holdPointer = () => {
+    isPointerBusy = true
+    controls.enabled = false
+}
+
+const releasePointer = () => {
+    game.working = false
+    if (!isPointerBusy) return
+    isPointerBusy = false
+    if (experience.phase === 'running') controls.enabled = true
 }
 
 canvas.addEventListener('pointerdown', (event) => {
-    pointerDownPosition.x = event.clientX
-    pointerDownPosition.y = event.clientY
-})
+    if (experience.phase !== 'running') return
 
-canvas.addEventListener('pointerup', (event) => {
-    // Если мышь заметно сдвинулась, это был поворот камеры, а не клик
-    const moved = Math.hypot(event.clientX - pointerDownPosition.x, event.clientY - pointerDownPosition.y)
-    if (moved > 5) return
-
+    // Карточку закрываем сразу при нажатии, а не при отпускании:
+    // иначе за 100–200 мс между ними быстрая карточка успевает улететь из-под курсора
     const card = getCardUnderPointer(event)
-    if (card) dismissCard(card)
+    if (card) {
+        dismissCard(card)
+        holdPointer()
+        return
+    }
+
+    // Зажали монитор — герой работает
+    if (isPointerOnMonitor(event)) {
+        game.working = true
+        holdPointer()
+    }
 })
+
+canvas.addEventListener('pointerup', releasePointer)
+// Палец ушёл с экрана или браузер отменил касание — тоже отпускаем
+canvas.addEventListener('pointercancel', releasePointer)
+canvas.addEventListener('pointerleave', releasePointer)
 
 canvas.addEventListener('pointermove', (event) => {
     if (event.pointerType !== 'mouse') return
-    canvas.style.cursor = getCardUnderPointer(event) ? 'pointer' : ''
+    const isInteractive = experience.phase === 'running' && (getCardUnderPointer(event) || isPointerOnMonitor(event))
+    canvas.style.cursor = isInteractive ? 'pointer' : ''
 })
 
 /**
@@ -910,6 +984,7 @@ canvas.addEventListener('pointermove', (event) => {
 const sceneFolder = gui.addFolder('Scene')
 sceneFolder.add(params, 'fogDensity').min(0).max(0.2).step(0.001).name('fog density')
 sceneFolder.add(params, 'fogDensityGrowth').min(0).max(0.1).step(0.001).name('fog growth')
+sceneFolder.add(params, 'vignetteStrength').min(0).max(1).step(0.01).name('vignette strength')
 sceneFolder.add(params, 'cameraShake').min(0).max(0.2).step(0.001).name('camera shake')
 sceneFolder.addColor(params, 'background').onChange((value) => {
     scene.background.set(value)
@@ -944,7 +1019,10 @@ newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight 
  */
 const experience = {
     phase: 'intro',
-    allGoneAt: null, // когда уволили последнего коллегу
+    ending: null, // 'calm' | 'fired' | 'burnout'
+    endingsFound: new Set(),
+    endingTime: '',
+    aftermathShown: false, // для концовки burnout: показали ли уже пустой офис после вспышки
     endingStart: 0,
     lastIntensity: -1,
 }
@@ -952,11 +1030,36 @@ const experience = {
 const ui = {
     intro: document.querySelector('[data-intro]'),
     start: document.querySelector('[data-start]'),
-    hint: document.querySelector('[data-hint]'),
-    close: document.querySelector('[data-close]'),
+    clockPanel: document.querySelector('[data-clock-panel]'),
+    clock: document.querySelector('[data-clock]'),
+    clockGoal: document.querySelector('[data-clock-goal]'),
+    shiftOver: document.querySelector('[data-shift-over]'),
+    goHome: document.querySelector('[data-go-home]'),
+    outroCard: document.querySelector('[data-outro-card]'),
+    outroTime: document.querySelector('[data-outro-time]'),
+    outroBest: document.querySelector('[data-outro-best]'),
+    outroEndings: document.querySelector('[data-outro-endings]'),
     outro: document.querySelector('[data-outro]'),
     restart: document.querySelector('[data-restart]'),
     mute: document.querySelector('[data-mute]'),
+    hud: document.querySelector('[data-hud]'),
+    performance: document.querySelector('[data-meter="performance"]'),
+    stress: document.querySelector('[data-meter="stress"]'),
+    vignette: document.querySelector('[data-vignette]'),
+    whiteout: document.querySelector('[data-whiteout]'),
+    outroEnding: document.querySelector('[data-outro-ending]'),
+    outroTitle: document.querySelector('[data-outro-title]'),
+    outroLead: document.querySelector('[data-outro-lead]'),
+    outroFound: document.querySelector('[data-outro-found]'),
+    outroScore: document.querySelector('[data-outro-score]'),
+    score: document.querySelector('[data-score]'),
+    combo: document.querySelector('[data-combo]'),
+    popups: document.querySelector('[data-popups]'),
+}
+
+// На сенсорных экранах пишем «Tap» вместо «Click»
+if (window.matchMedia('(pointer: coarse)').matches) {
+    for (const element of document.querySelectorAll('[data-action-word]')) element.textContent = 'Tap'
 }
 
 // Пока висит стартовый экран, камера медленно облетает офис
@@ -970,15 +1073,16 @@ const startShift = () => {
 
     ui.intro.classList.add('is-hidden')
     setTimeout(() => (ui.intro.hidden = true), 1200)
+    ui.hud.hidden = false
+    ui.clockPanel.hidden = false
 
     // Таймеры истории отсчитываем от момента старта, а не от загрузки страницы
     const elapsedTime = clock.getElapsedTime()
     story.nextFireAt = elapsedTime + story.startDelay
     news.nextSpawnAt = elapsedTime + 1.5
     applications.nextAt = elapsedTime + 1
-
-    setTimeout(() => ui.hint.classList.add('is-visible'), 2500)
-    setTimeout(() => ui.hint.classList.remove('is-visible'), 9000)
+    shift.start = elapsedTime
+    shift.duration = getShiftDuration()
 }
 
 ui.start.addEventListener('click', startShift)
@@ -1024,6 +1128,53 @@ window.addEventListener('keydown', (event) => {
     toggleMute()
 })
 
+/**
+ * Shift clock
+ * Смена идёт с 22:00 до 06:00. Её длина в секундах подбирается так,
+ * чтобы к 06:00 успели уволить всех коллег
+ */
+const shift = {
+    start: 0,
+    duration: 90,
+    over: false,
+    startHour: 22,
+    hours: 8,
+}
+
+const getShiftDuration = () => {
+    let total = story.startDelay
+    for (let fired = 1; fired < colleagues.length; fired++) {
+        total += Math.max(story.minInterval, story.firstInterval * story.acceleration ** fired)
+    }
+    return total + FLICKER_DURATION + 3 // небольшая пауза после последнего увольнения
+}
+
+const getShiftFraction = (elapsedTime) =>
+    THREE.MathUtils.clamp((elapsedTime - shift.start) / shift.duration, 0, 1)
+
+const formatShiftTime = (fraction) => {
+    const minutes = shift.startHour * 60 + Math.floor(fraction * shift.hours * 60)
+    const hh = String(Math.floor(minutes / 60) % 24).padStart(2, '0')
+    const mm = String(minutes % 60).padStart(2, '0')
+    return `${hh}:${mm}`
+}
+
+const endShift = () => {
+    shift.over = true
+    ui.clock.textContent = formatShiftTime(1)
+    ui.clockGoal.textContent = 'Shift over'
+    ui.shiftOver.hidden = false
+    game.working = false
+
+    // Утро: все уведомления, что ещё летят, тихо исчезают
+    const elapsedTime = clock.getElapsedTime()
+    for (const card of flyingCards) {
+        if (card.dismissedAt === null) card.dismissedAt = elapsedTime
+    }
+}
+
+ui.goHome.addEventListener('click', () => startEnding('calm'))
+
 const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
 
 /**
@@ -1057,20 +1208,250 @@ const updateTension = (elapsedTime) => {
         Math.sin(elapsedTime * 29 + 1) * Math.sin(elapsedTime * 7),
         Math.sin(elapsedTime * 23 + 2) * Math.sin(elapsedTime * 11)
     ).multiplyScalar(amplitude)
+}
 
-    // Всех уволили — даём герою выход
-    if (experience.phase === 'running' && experience.allGoneAt === null
-        && colleagues.every((desk) => desk.userData.state === 'off')) {
-        experience.allGoneAt = elapsedTime
-        setTimeout(() => (ui.close.hidden = false), 2500)
+/**
+ * Game
+ * Две шкалы тянут в разные стороны:
+ * Performance растёт, пока держишь монитор, и всё время падает сама (к концу смены — быстрее)
+ * Stress растёт, когда уведомление долетает до головы, и снижается, когда его закрываешь
+ */
+const game = {
+    performance: 100,
+    stress: 0,
+    working: false,
+    hitFlash: 0, // вспышка виньетки при попадании карточки: 1 → 0
+
+    workRate: 16, // сколько Performance в секунду даёт работа
+    performanceDecayStart: 2, // сколько Performance в секунду теряется в начале смены
+    performanceDecayEnd: 6, // ... и в конце
+    stressPerHit: 8,
+    stressReliefPerDismiss: 2,
+    stressDecay: 1.5, // сколько Stress в секунду уходит само
+    respawnChance: 0.5, // шанс, что на месте закрытой карточки появится новая
+
+    // Очки
+    score: 0,
+    combo: 0, // сколько карточек закрыто подряд без пропущенных
+    hasWorked: false, // работал ли игрок хоть раз — пока нет, показываем подсказку над монитором
+    workPointsPerSecond: 5,
+    dismissPoints: 10,
+    comboStep: 5, // каждые 5 карточек подряд множитель растёт на 1
+    maxMultiplier: 5,
+    calmBonus: 500,
+}
+
+const getMultiplier = () => Math.min(game.maxMultiplier, 1 + Math.floor(game.combo / game.comboStep))
+
+// Переводим точку сцены в пиксели экрана — чтобы показать «+20» рядом с карточкой
+const projectToScreen = (position) => {
+    const projected = position.clone().project(camera)
+    return { x: (projected.x + 1) / 2 * sizes.width, y: (1 - projected.y) / 2 * sizes.height }
+}
+
+const showPopup = (position, text, isBad = false) => {
+    const { x, y } = projectToScreen(position)
+    const popup = document.createElement('span')
+    popup.className = isBad ? 'popup is-bad' : 'popup'
+    popup.textContent = text
+    popup.style.left = `${x}px`
+    popup.style.top = `${y}px`
+    ui.popups.append(popup)
+    popup.addEventListener('animationend', () => popup.remove())
+}
+
+const addDismissScore = (position) => {
+    if (experience.phase !== 'running') return
+    game.combo++
+    const multiplier = getMultiplier()
+    const points = game.dismissPoints * multiplier
+    game.score += points
+    showPopup(position, multiplier > 1 ? `+${points} ×${multiplier}` : `+${points}`)
+
+    // Множитель вырос — коротко «подпрыгиваем» надписью комбо
+    if (game.combo % game.comboStep === 0 && multiplier <= game.maxMultiplier) {
+        ui.combo.classList.remove('is-bump')
+        void ui.combo.offsetWidth // трюк, чтобы CSS-анимация запустилась заново
+        ui.combo.classList.add('is-bump')
     }
 }
 
 /**
- * Ending
- * Герой закрывает ноутбук: экраны гаснут, призраки растворяются, тревога стихает, наступает рассвет
+ * Hold hint
+ * Пульсирующая надпись над монитором героя: показывает, что монитор можно зажать.
+ * Видна, пока игрок ни разу не поработал, и снова — когда Performance проседает
  */
-const ENDING_DURATION = 8
+const holdHintTexture = createGlowLabelTexture('HOLD TO WORK', '#34d399')
+const holdHint = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+        map: holdHintTexture.texture,
+        transparent: true,
+        depthTest: false, // поверх всего, чтобы герой и карточки её не закрывали
+        fog: false,
+        opacity: 0,
+    })
+)
+holdHint.renderOrder = 10
+holdHint.scale.set(0.24 * holdHintTexture.aspect, 0.24, 1)
+const holdHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 1.62, -0.22))
+holdHint.position.copy(holdHintBase)
+scene.add(holdHint)
+
+const updateHoldHint = (elapsedTime) => {
+    const needsHint = experience.phase === 'running' && !game.working
+        && (!game.hasWorked || game.performance < DANGER_LEVEL + 15)
+    const pulse = 0.5 + 0.5 * Math.sin(elapsedTime * 5)
+
+    // Плавно проявляем и прячем
+    const target = needsHint ? 0.6 + 0.4 * pulse : 0
+    holdHint.material.opacity += (target - holdHint.material.opacity) * 0.15
+    holdHint.position.y = holdHintBase.y + Math.sin(elapsedTime * 2.5) * 0.03
+
+    // Экран тоже мерцает зелёным — подсказываем, куда нажимать
+    if (needsHint) heroDesk.userData.screen.material.color.lerp(colors.screenWork, 0.15 + 0.35 * pulse)
+}
+
+const DANGER_LEVEL = 25
+
+const gameFolder = gui.addFolder('Game')
+gameFolder.add(game, 'performance').min(0).max(100).step(1).listen()
+gameFolder.add(game, 'stress').min(0).max(100).step(1).listen()
+gameFolder.add(game, 'workRate').min(0).max(50).step(0.5).name('work rate /s')
+gameFolder.add(game, 'performanceDecayStart').min(0).max(20).step(0.5).name('perf decay at start /s')
+gameFolder.add(game, 'performanceDecayEnd').min(0).max(20).step(0.5).name('perf decay at end /s')
+gameFolder.add(game, 'stressPerHit').min(0).max(30).step(1).name('stress per hit')
+gameFolder.add(game, 'stressReliefPerDismiss').min(0).max(10).step(0.5).name('relief per dismiss')
+gameFolder.add(game, 'stressDecay').min(0).max(10).step(0.1).name('stress decay /s')
+gameFolder.add(game, 'respawnChance').min(0).max(1).step(0.05).name('respawn chance')
+
+const onCardHit = () => {
+    if (experience.phase !== 'running' || shift.over) return
+    game.stress = Math.min(100, game.stress + game.stressPerHit)
+    game.hitFlash = 1
+    sound.hit()
+
+    if (game.combo >= game.comboStep) showPopup(heroHead, 'Combo lost', true)
+    game.combo = 0
+
+    // Проверяем выгорание сразу при попадании. Если ждать updateGame, стресс успевает
+    // чуть-чуть спасть (100 → 99.97), и проверка «>= 100» никогда не срабатывает
+    if (game.stress >= 100) startEnding('burnout')
+}
+
+const setMeter = (meter, value, isDanger) => {
+    meter.querySelector('[data-meter-fill]').style.width = `${value}%`
+    meter.classList.toggle('is-danger', isDanger)
+}
+
+const updateGame = (elapsedTime, deltaTime) => {
+    game.hitFlash = Math.max(0, game.hitFlash - deltaTime * 3)
+
+    if (experience.phase !== 'running') {
+        ui.vignette.style.opacity = 0
+        return
+    }
+
+    // После 06:00 шкалы замирают: смена закончилась, осталось только уйти домой
+    if (shift.over) {
+        ui.vignette.style.opacity = Math.max(0, Number(ui.vignette.style.opacity) - deltaTime)
+        return
+    }
+
+    const shiftFraction = getShiftFraction(elapsedTime)
+    ui.clock.textContent = formatShiftTime(shiftFraction)
+    if (shiftFraction >= 1) {
+        endShift()
+        return
+    }
+
+    const decay = THREE.MathUtils.lerp(game.performanceDecayStart, game.performanceDecayEnd, getStoryProgress())
+    const work = game.working ? game.workRate : 0
+    if (game.working) {
+        game.hasWorked = true
+        game.score += game.workPointsPerSecond * deltaTime
+    }
+    game.performance = THREE.MathUtils.clamp(game.performance + (work - decay) * deltaTime, 0, 100)
+    game.stress = THREE.MathUtils.clamp(game.stress - game.stressDecay * deltaTime, 0, 100)
+
+    // Пока работает: экран светлеет, герой чуть подрагивает над клавиатурой, слышно стук клавиш
+    const { screen, person } = heroDesk.userData
+    if (game.working) {
+        screen.material.color.lerp(colors.screenWork, 0.6)
+        person.position.y = Math.abs(Math.sin(elapsedTime * 25)) * 0.015
+        sound.type()
+    } else {
+        person.position.y = 0
+    }
+
+    ui.score.textContent = Math.floor(game.score)
+    const multiplier = getMultiplier()
+    ui.combo.textContent = multiplier > 1 ? `×${multiplier} combo` : ''
+
+    setMeter(ui.performance, game.performance, game.performance < DANGER_LEVEL)
+    setMeter(ui.stress, game.stress, game.stress > 100 - DANGER_LEVEL)
+    ui.vignette.style.opacity = Math.min(1, (game.stress / 100) * params.vignetteStrength + game.hitFlash * 0.3)
+
+    if (game.performance <= 0) startEnding('fired')
+}
+
+/**
+ * Endings
+ * calm — дожил до 06:00 и ушёл домой: экраны гаснут, призраки растворяются, рассвет
+ * fired — Performance упала до нуля: лампа героя гаснет, и он сам становится призраком
+ * burnout — Stress дошёл до 100: вспышка и звон в ушах, потом тёмный пустой офис
+ */
+const endings = {
+    calm: {
+        icon: '🌅',
+        name: 'Made it to morning',
+        accent: '#ff8a3d',
+        title: 'He made it through the night.',
+        lead: 'He just wanted a quiet, good life. The news will still be there tomorrow — so will the sunrise.',
+        duration: 8,
+    },
+    fired: {
+        icon: '👻',
+        name: 'Let go',
+        accent: '#ff5a5a',
+        title: 'He answered every notification.',
+        lead: 'There was no time left for the work. Not everything that pings needs an answer.',
+        duration: 7,
+    },
+    burnout: {
+        icon: '🔥',
+        name: 'Burnout',
+        accent: '#9fb4d9',
+        title: 'He tried to carry all of it.',
+        lead: 'Every headline, every task, every ping. Nobody can. Rest is part of the work.',
+        duration: 7,
+    },
+}
+
+const ENDINGS_STORAGE_KEY = 'nightmare-office:endings'
+const BEST_SCORE_STORAGE_KEY = 'nightmare-office:best'
+
+// Сохраняет рекорд и сообщает, побит ли он
+const saveBestScore = (score) => {
+    try {
+        const previousBest = Number(localStorage.getItem(BEST_SCORE_STORAGE_KEY)) || 0
+        if (score > previousBest) localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(score))
+        return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
+    } catch {
+        return { best: score, isNewBest: false }
+    }
+}
+
+// Какие концовки зритель уже видел — храним в localStorage, чтобы показывать «2/3»
+const saveEnding = (kind) => {
+    try {
+        const found = new Set(JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]'))
+        found.add(kind)
+        localStorage.setItem(ENDINGS_STORAGE_KEY, JSON.stringify([...found]))
+        return found
+    } catch {
+        return new Set([kind])
+    }
+}
 
 const dawn = {
     background: new THREE.Color('#4a3640'),
@@ -1078,28 +1459,39 @@ const dawn = {
     moonIntensity: 1.4,
     ambientIntensity: 0.35,
     fogDensity: 0.035,
-    cameraPosition: heroDesk.position.clone().add(new THREE.Vector3(2.6, 2, 3.4)),
-    controlsTarget: heroDesk.position.clone().add(new THREE.Vector3(0, 1, 0)),
 }
 
-// Сюда в момент закрытия ноутбука запоминаем, откуда начинаем переход
+// Камера в финале подлетает к герою
+const endingCamera = {
+    position: heroDesk.position.clone().add(new THREE.Vector3(2.6, 2, 3.4)),
+    target: heroDesk.position.clone().add(new THREE.Vector3(0, 1, 0)),
+}
+
+// Сюда в момент концовки запоминаем, откуда начинаем переход
 const endingFrom = {}
 
-const closeLaptop = () => {
+const startEnding = (kind) => {
+    if (experience.phase !== 'running') return
     const elapsedTime = clock.getElapsedTime()
+
     experience.phase = 'ending'
+    experience.ending = kind
     experience.endingStart = elapsedTime
-    ui.close.hidden = true
+    experience.endingsFound = saveEnding(kind)
+    experience.endingTime = formatShiftTime(getShiftFraction(elapsedTime))
+    if (kind === 'calm') game.score += game.calmBonus
+
+    ui.shiftOver.hidden = true
+    ui.hud.hidden = true
+    ui.clockPanel.hidden = true
+    game.working = false
+    heroDesk.userData.person.position.y = 0
+    cameraShake.set(0, 0, 0)
+    controls.enabled = false
 
     for (const card of flyingCards) {
         if (card.dismissedAt === null) card.dismissedAt = elapsedTime
     }
-
-    heroLight.intensity = params.heroLightIntensity
-    setDeskPower(heroDesk, 1)
-    cameraShake.set(0, 0, 0)
-    sound.calm()
-    controls.enabled = false
 
     Object.assign(endingFrom, {
         background: scene.background.clone(),
@@ -1111,15 +1503,53 @@ const closeLaptop = () => {
         cameraPosition: camera.position.clone(),
         controlsTarget: controls.target.clone(),
     })
+
+    if (kind === 'calm') {
+        heroLight.intensity = params.heroLightIntensity
+        setDeskPower(heroDesk, 1)
+        sound.calm()
+    } else if (kind === 'fired') {
+        showFiringLabel(heroDesk, 'LOW PERFORMANCE')
+        sound.buzz()
+        sound.calm({ chord: false })
+    } else if (kind === 'burnout') {
+        ui.whiteout.classList.add('is-visible')
+        sound.tinnitus()
+        sound.calm({ chord: false })
+    }
 }
 
-ui.close.addEventListener('click', closeLaptop)
 
-const updateEnding = (elapsedTime) => {
-    if (experience.phase !== 'ending') return
+const showOutro = (kind) => {
+    const ending = endings[kind]
+    ui.outroCard.style.setProperty('--accent', ending.accent)
+    ui.outroEnding.textContent = `Ending · ${ending.name}`
+    ui.outroTime.textContent = kind === 'calm' ? '06:00' : `at ${experience.endingTime}`
+    ui.outroTitle.textContent = ending.title
+    ui.outroLead.textContent = ending.lead
 
-    const t = Math.min((elapsedTime - experience.endingStart) / ENDING_DURATION, 1)
-    const eased = t * t * (3 - 2 * t) // smoothstep: плавно в начале и в конце
+    const score = Math.floor(game.score)
+    const { best, isNewBest } = saveBestScore(score)
+    ui.outroScore.textContent = score
+    ui.outroBest.innerHTML = isNewBest ? `${best}<span class="new-best">New best!</span>` : String(best)
+
+    // Все концовки: найденные — с иконкой и названием, ненайденные — «???»
+    const kinds = Object.keys(endings)
+    ui.outroFound.textContent = `${experience.endingsFound.size}/${kinds.length}`
+    ui.outroEndings.replaceChildren(...kinds.map((key) => {
+        const item = document.createElement('li')
+        const isFound = experience.endingsFound.has(key)
+        item.className = 'outro-ending'
+        item.classList.toggle('is-locked', !isFound)
+        item.classList.toggle('is-current', key === kind)
+        item.textContent = isFound ? `${endings[key].icon} ${endings[key].name}` : '??? '
+        return item
+    }))
+
+    ui.outro.hidden = false
+}
+
+const updateCalmEnding = (t, eased) => {
     const screensOff = Math.min(t * 4, 1) // экраны гаснут в первые 2 секунды
     const lerp = THREE.MathUtils.lerp
 
@@ -1136,14 +1566,69 @@ const updateEnding = (elapsedTime) => {
     monitorGlow.intensity = endingFrom.monitorGlow * (1 - screensOff)
 
     ghostVisibility = 1 - eased
+}
 
-    camera.position.lerpVectors(endingFrom.cameraPosition, dawn.cameraPosition, eased)
-    controls.target.lerpVectors(endingFrom.controlsTarget, dawn.controlsTarget, eased)
+const updateFiredEnding = (elapsedTime) => {
+    // Лампа героя мигает и гаснет так же, как у коллег, а потом он встаёт призраком
+    const t = elapsedTime - experience.endingStart
+    let power = 0
+    if (t < FLICKER_DURATION) {
+        power = hashNoise(Math.floor(t * 12)) > 0.45 ? 1 : 0.1
+    } else if (heroDesk.userData.person.visible) {
+        heroDesk.userData.person.visible = false
+        spawnGhost(heroDesk, elapsedTime)
+    }
+
+    heroLight.intensity = params.heroLightIntensity * power
+    setDeskPower(heroDesk, power)
+    jobMonitorScreen.material.color.setScalar(power)
+    monitorGlow.intensity = endingFrom.monitorGlow * power
+}
+
+// Выгорание: вспышка, а когда она спадает — тёмный пустой офис, все лампы погасли.
+// Горит только монитор, и герой, ссутулившись, сидит перед ним
+const WHITEOUT_DURATION = 2.5
+
+const updateBurnoutEnding = (elapsedTime) => {
+    const t = elapsedTime - experience.endingStart
+    if (t < WHITEOUT_DURATION || experience.aftermathShown) return
+    experience.aftermathShown = true
+
+    for (const desk of colleagues) setDeskPower(desk, 0)
+    ghostVisibility = 0
+
+    heroLight.intensity = 0
+    setDeskPower(heroDesk, 0)
+    heroDesk.userData.screen.material.color.copy(colors.screenOn).multiplyScalar(0.7)
+    monitorGlow.intensity = 4
+    heroDesk.userData.person.rotation.x = -0.25
+
+    moonLight.color.set('#6f86b8')
+    moonLight.intensity = 0.3
+    ambientLight.intensity = 0.04
+    scene.fog.density = 0.07
+
+    ui.whiteout.classList.remove('is-visible') // CSS плавно уберёт вспышку
+}
+
+const updateEnding = (elapsedTime) => {
+    if (experience.phase !== 'ending') return
+
+    const kind = experience.ending
+    const t = Math.min((elapsedTime - experience.endingStart) / endings[kind].duration, 1)
+    const eased = t * t * (3 - 2 * t) // smoothstep: плавно в начале и в конце
+
+    if (kind === 'calm') updateCalmEnding(t, eased)
+    if (kind === 'fired') updateFiredEnding(elapsedTime)
+    if (kind === 'burnout') updateBurnoutEnding(elapsedTime)
+
+    camera.position.lerpVectors(endingFrom.cameraPosition, endingCamera.position, eased)
+    controls.target.lerpVectors(endingFrom.controlsTarget, endingCamera.target, eased)
 
     if (t >= 1) {
         experience.phase = 'done'
         controls.enabled = true
-        ui.outro.hidden = false
+        showOutro(kind)
     }
 }
 
@@ -1152,8 +1637,12 @@ const updateEnding = (elapsedTime) => {
  */
 const clock = new THREE.Clock()
 
+let previousTime = 0
+
 const tick = () => {
     const elapsedTime = clock.getElapsedTime()
+    const deltaTime = Math.min(elapsedTime - previousTime, 0.1) // если вкладка была скрыта, не делаем огромный скачок
+    previousTime = elapsedTime
 
     updateStory(elapsedTime)
     updateColleagues(elapsedTime)
@@ -1162,6 +1651,8 @@ const tick = () => {
     updateNews(elapsedTime)
     updateApplications(elapsedTime)
     updateTension(elapsedTime)
+    updateGame(elapsedTime, deltaTime) // после updateTension: поверх его цвета экрана рисуем «работу»
+    updateHoldHint(elapsedTime)
     updateEnding(elapsedTime)
 
     controls.update()

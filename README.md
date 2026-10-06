@@ -30,6 +30,12 @@ npm run dev
 | `experience` / `startShift` | фазы истории: intro → running → ending → done, стартовый экран | — |
 | `updateTension` | туман сгущается, лампа героя коротит, камера дрожит, появляется «Close the laptop» | Animations |
 | `closeLaptop` / `updateEnding` | экраны гаснут, призраки растворяются, рассвет, камера подлетает к герою | Animations, Lights |
+| `game` / `updateGame` | две шкалы: Performance (держи монитор) и Stress (закрывай карточки), виньетка стресса | — |
+| `addDismissScore` / `getMultiplier` | очки: +5/с за работу, +10 × комбо за карточку, +500 за спокойную концовку, рекорд в localStorage | — |
+| `holdHint` / `updateHoldHint` | пульсирующая надпись HOLD TO WORK над монитором, пока игрок не начал работать | Sprites |
+| `shift` / `endShift` | часы смены 22:00 → 06:00; в 06:00 шкалы замирают и появляется «Go home» | — |
+| `getCardUnderPointer` | попадание по карточке считается в пикселях экрана с запасом 18 px, срабатывает сразу при нажатии | Raycaster |
+| `startEnding` / `endings` | три концовки: calm (закрыл ноутбук), fired (Performance = 0), burnout (Stress = 100), счётчик найденных | — |
 | `src/sound.js` | весь звук генерируется Web Audio API: гул, шипение, сердцебиение, пинги, финальный аккорд | — |
 | `src/canvasText.js` | рисование текста на canvas → текстура (карточки, надписи, экран) | Textures |
 | Debug (lil-gui) | крутилки тумана, света, темпа истории и новостей | Debug UI |

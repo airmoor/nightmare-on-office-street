@@ -140,7 +140,7 @@ export const createSound = () => {
     const scheduleHeartbeat = () => {
         const interval = 1.3 - intensity * 0.85 // от 1.3 с до 0.45 с
         if (intensity > 0.2) {
-            const volume = 0.15 + intensity * 0.35
+            const volume = 0.12 + intensity * 0.16
             // triangle вместо sine: у него есть обертоны, и удар слышно даже на динамике телефона
             blip({ type: 'triangle', from: 90, to: 45, duration: 0.16, volume })
             blip({ type: 'triangle', from: 75, to: 40, duration: 0.14, volume: volume * 0.7, delay: 0.2 })
@@ -157,7 +157,14 @@ export const createSound = () => {
         context.resume() // Safari иногда создаёт контекст сразу на паузе
         master = context.createGain()
         master.gain.value = muted ? 0 : 0.8
-        master.connect(context.destination)
+        // Компрессор сглаживает пики: когда звуки накладываются в конце, общая громкость не взлетает
+        const compressor = context.createDynamicsCompressor()
+        compressor.threshold.value = -24
+        compressor.knee.value = 12
+        compressor.ratio.value = 6
+        compressor.attack.value = 0.005
+        compressor.release.value = 0.25
+        master.connect(compressor).connect(context.destination)
 
         drone = createDrone()
         hiss = createHiss()
@@ -170,9 +177,9 @@ export const createSound = () => {
     const setIntensity = (value) => {
         intensity = value
         if (!context) return
-        rampTo(drone.gain.gain, 0.05 + value * 0.09)
-        rampTo(drone.filter.frequency, 320 + value * 700)
-        rampTo(hiss.gain.gain, 0.012 + value * 0.02)
+        rampTo(drone.gain.gain, 0.05 + value * 0.035)
+        rampTo(drone.filter.frequency, 320 + value * 450)
+        rampTo(hiss.gain.gain, 0.012 + value * 0.008)
     }
 
     // Уведомление: два коротких тона вверх. Не чаще, чем раз в 0.15 с
@@ -193,12 +200,39 @@ export const createSound = () => {
         }
     }
 
-    // Финал: тревога уходит, остаётся тихий тёплый аккорд
-    const calm = () => {
+    // Стук клавиш, пока герой работает. Не чаще, чем раз в 0.08 с
+    let lastTypeAt = 0
+    const type = () => {
+        if (!context || context.currentTime - lastTypeAt < 0.08) return
+        lastTypeAt = context.currentTime
+        blip({ type: 'square', from: 1800 + Math.random() * 900, to: 900, duration: 0.025, volume: 0.015 })
+    }
+
+    // Карточка долетела до головы: глухой удар
+    const hit = () => blip({ type: 'triangle', from: 160, to: 55, duration: 0.25, volume: 0.09 })
+
+    // Выгорание: высокий звон в ушах, который медленно затихает
+    const tinnitus = () => {
+        if (!context) return
+        const now = context.currentTime
+        const oscillator = context.createOscillator()
+        const gain = context.createGain()
+        oscillator.frequency.value = 3800
+        gain.gain.setValueAtTime(0, now)
+        gain.gain.linearRampToValueAtTime(0.03, now + 1.5)
+        gain.gain.linearRampToValueAtTime(0, now + 9)
+        oscillator.connect(gain).connect(master)
+        oscillator.start(now)
+        oscillator.stop(now + 9.5)
+    }
+
+    // Финал: тревога уходит. В спокойной концовке остаётся тихий тёплый аккорд
+    const calm = ({ chord = true } = {}) => {
         if (!context) return
         clearTimeout(heartbeatTimeout)
         rampTo(drone.gain.gain, 0, 4)
         rampTo(hiss.gain.gain, 0, 4)
+        if (!chord) return
 
         const now = context.currentTime
         for (const frequency of [261.6, 329.6, 392, 523.3]) {
@@ -227,5 +261,5 @@ export const createSound = () => {
         if (context && context.state !== 'running') context.resume()
     }
 
-    return { start, resume, setIntensity, ping, pop, buzz, calm, setMuted, isMuted }
+    return { start, resume, setIntensity, ping, pop, buzz, type, hit, tinnitus, calm, setMuted, isMuted }
 }

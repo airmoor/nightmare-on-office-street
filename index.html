@@ -15,18 +15,82 @@
       <p class="eyebrow">Halloween · Night shift</p>
       <h1>Nightmare on<br />Office Street</h1>
       <p class="lead">Somewhere in an open office, the lights are going out one by one.</p>
+      <ul class="rules">
+        <li><strong>Hold the monitor</strong> to work — keep your performance up</li>
+        <li><strong><span data-action-word>Click</span> notifications</strong> before they reach you — keep your stress down</li>
+        <li>Dismiss several in a row for a <strong>combo</strong></li>
+      </ul>
       <button class="button" data-start>Start shift</button>
       <p class="note">Best with headphones 🎧</p>
     </section>
 
-    <p class="hint" data-hint>Click the notifications to dismiss them.<br />Good luck keeping up.</p>
+    <!-- Красная виньетка по краям экрана: чем выше стресс, тем она сильнее -->
+    <div class="vignette" data-vignette></div>
 
-    <button class="button button-close" data-close hidden>Close the laptop</button>
+    <!-- Шкалы, очки и правила -->
+    <div class="hud" data-hud hidden>
+      <div class="hud-score">
+        <span class="meter-label">Score</span>
+        <strong class="hud-score-value" data-score>0</strong>
+        <span class="hud-combo" data-combo></span>
+      </div>
+      <div class="meter meter-performance" data-meter="performance">
+        <span class="meter-label">Performance</span>
+        <span class="meter-track"><span class="meter-fill" data-meter-fill></span></span>
+      </div>
+      <div class="meter meter-stress" data-meter="stress">
+        <span class="meter-label">Stress</span>
+        <span class="meter-track"><span class="meter-fill" data-meter-fill></span></span>
+      </div>
+      <ul class="hud-rules">
+        <li><span class="hud-key">Hold</span> monitor → performance ↑</li>
+        <li><span class="hud-key" data-action-word>Click</span> notifications → stress ↓</li>
+      </ul>
+    </div>
 
+    <!-- Сюда JS добавляет всплывающие «+20» -->
+    <div class="popups" data-popups></div>
+
+    <!-- Белая вспышка для концовки «Burnout» -->
+    <div class="whiteout" data-whiteout></div>
+
+    <!-- Часы смены: цель игры — дотянуть до 06:00 -->
+    <div class="clock" data-clock-panel hidden>
+      <span class="clock-time" data-clock>22:00</span>
+      <span class="clock-goal" data-clock-goal>Survive until 06:00</span>
+    </div>
+
+    <!-- Смена закончилась — это победа, а не «сдаться» -->
+    <div class="shift-over" data-shift-over hidden>
+      <p class="shift-over-title">06:00 — you made it through the night</p>
+      <button class="button" data-go-home>Go home 🌅</button>
+    </div>
+
+    <!-- Финал оформлен как последнее уведомление, в том же стиле, что и карточки в игре -->
     <section class="overlay outro" data-outro hidden>
-      <h2>He just wanted a quiet, good life.</h2>
-      <p class="lead">Close the laptop sometimes. The news will still be there tomorrow.</p>
-      <button class="button button-ghost" data-restart>Start over</button>
+      <article class="outro-card" data-outro-card>
+        <header class="outro-header">
+          <span class="outro-label" data-outro-ending></span>
+          <span class="outro-time" data-outro-time></span>
+        </header>
+        <h2 class="outro-title" data-outro-title></h2>
+        <p class="outro-lead" data-outro-lead></p>
+        <div class="outro-stats">
+          <div class="outro-stat">
+            <span class="outro-stat-label">Score</span>
+            <strong class="outro-stat-value" data-outro-score></strong>
+          </div>
+          <div class="outro-stat">
+            <span class="outro-stat-label">Best</span>
+            <strong class="outro-stat-value" data-outro-best></strong>
+          </div>
+        </div>
+        <div class="outro-endings">
+          <span class="outro-stat-label">Endings found <span data-outro-found></span></span>
+          <ul class="outro-endings-list" data-outro-endings></ul>
+        </div>
+        <button class="button" data-restart>Try another night</button>
+      </article>
       <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
     </section>
 

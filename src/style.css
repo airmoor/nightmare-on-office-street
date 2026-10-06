@@ -44,11 +44,19 @@ body {
 }
 
 .outro {
-  /* Финальный текст лежит поверх рассвета, фон почти прозрачный */
-  background: linear-gradient(to top, rgba(20, 12, 16, 0.75), rgba(20, 12, 16, 0) 60%);
-  justify-content: flex-end;
-  padding-bottom: 12vh;
-  animation: fade-in 2.5s ease both;
+  /* Карточка лежит поверх сцены, сверху сцена остаётся видна */
+  z-index: 6;
+  background: linear-gradient(to top, rgba(5, 6, 10, 0.85), rgba(5, 6, 10, 0) 70%);
+  justify-content: flex-start;
+  gap: 14px;
+  padding-bottom: max(24px, 6vh);
+  /* Если экран низкий, карточку можно прокрутить. margin-top: auto у карточки прижимает её к низу,
+     но, в отличие от justify-content: flex-end, не обрезает верх при переполнении */
+  overflow-y: auto;
+}
+
+.outro > :first-child {
+  margin-top: auto;
 }
 
 .is-hidden {
@@ -119,18 +127,6 @@ h2 {
   box-shadow: none;
 }
 
-.button-close {
-  position: fixed;
-  left: 50%;
-  bottom: 10vh;
-  transform: translateX(-50%);
-  animation: fade-in 1.5s ease both, pulse 1.6s ease-in-out 1.5s infinite;
-}
-
-.button-close:hover {
-  transform: translateX(-50%) translateY(-1px);
-}
-
 .mute {
   position: fixed;
   right: 16px;
@@ -180,29 +176,6 @@ h2 {
   color: #9aa3b0;
 }
 
-/**
- * Hint
- */
-.hint {
-  position: fixed;
-  left: 50%;
-  bottom: 72px; /* выше кнопки звука, чтобы не пересекаться на телефоне */
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: calc(100% - 32px);
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: center;
-  color: #b9c0cc;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 1s ease;
-}
-
-.hint.is-visible {
-  opacity: 1;
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -212,5 +185,467 @@ h2 {
 @keyframes pulse {
   50% {
     box-shadow: 0 0 64px rgba(255, 138, 61, 0.7);
+  }
+}
+
+/**
+ * Rules on the intro screen
+ */
+.rules {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #b9c0cc;
+}
+
+.rules strong {
+  color: #f2f4f8;
+}
+
+/**
+ * HUD
+ */
+.hud {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(240px, calc(100% - 32px));
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(14, 16, 22, 0.65);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: fade-in 1s ease both;
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.meter-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #b9c0cc;
+}
+
+.meter-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  width: 50%;
+  border-radius: inherit;
+  transition: width 0.15s linear;
+}
+
+.meter-performance .meter-fill {
+  background: #34d399;
+}
+
+.meter-stress .meter-fill {
+  background: #ff5a5a;
+}
+
+/* Мигаем, когда шкала в опасной зоне */
+.meter.is-danger .meter-label {
+  color: #ff8a8a;
+  animation: blink 0.6s steps(2) infinite;
+}
+
+.meter-performance.is-danger .meter-fill {
+  background: #f5a524;
+}
+
+/**
+ * Vignette & whiteout
+ */
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* Центр остаётся чистым, чтобы герой и карточки были видны даже при максимальном стрессе */
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 60%, rgba(140, 10, 10, 0.8) 100%);
+  opacity: 0;
+}
+
+.vignette.is-hit {
+  animation: hit-flash 0.35s ease-out;
+}
+
+.whiteout {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: #ece8e2;
+  opacity: 0;
+  transition: opacity 2.5s ease-in;
+}
+
+.whiteout.is-visible {
+  opacity: 1;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes hit-flash {
+  from {
+    filter: brightness(1.8);
+  }
+}
+
+/**
+ * Score, combo, rules in HUD
+ */
+.hud-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.hud-score-value {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #f2f4f8;
+}
+
+.hud-combo {
+  display: inline-block;
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ff8a3d;
+}
+
+.hud-combo.is-bump {
+  animation: bump 0.25s ease-out;
+}
+
+.hud-rules {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  color: #b9c0cc;
+}
+
+.hud-key {
+  display: inline-block;
+  min-width: 42px;
+  padding: 1px 6px;
+  margin-right: 4px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  color: #f2f4f8;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/**
+ * Score popups
+ */
+.popups {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.popup {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffd27a;
+  text-shadow: 0 0 12px rgba(255, 138, 61, 0.6);
+  white-space: nowrap;
+  animation: popup 0.9s ease-out forwards;
+}
+
+.popup.is-bad {
+  color: #ff6b6b;
+  text-shadow: 0 0 12px rgba(255, 60, 60, 0.6);
+}
+
+@keyframes popup {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  20% {
+    transform: translate(-50%, -60%) scale(1.15);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -160%) scale(1);
+  }
+}
+
+@keyframes bump {
+  50% {
+    transform: scale(1.35);
+  }
+}
+
+/**
+ * Shift clock
+ */
+.clock {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 5;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(14, 16, 22, 0.65);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: fade-in 1s ease both;
+}
+
+.clock-time {
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.clock-goal {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ff8a3d;
+}
+
+/* На узком экране часы уезжают вправо, чтобы не налезать на HUD слева */
+@media (max-width: 560px) {
+  .clock {
+    left: auto;
+    right: 16px;
+    transform: none;
+    align-items: flex-end;
+    padding: 6px 12px;
+  }
+
+  .clock-time {
+    font-size: 18px;
+  }
+
+  .hud {
+    width: min(200px, calc(100% - 150px));
+  }
+}
+
+/**
+ * Shift over
+ */
+.shift-over {
+  position: fixed;
+  left: 50%;
+  bottom: 12vh;
+  z-index: 6;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  text-align: center;
+  animation: rise-in 0.8s ease both;
+}
+
+.shift-over-title {
+  font-size: clamp(18px, 3vw, 26px);
+  font-weight: 800;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.8);
+}
+
+.shift-over .button {
+  animation: pulse 1.6s ease-in-out 0.8s infinite;
+}
+
+/**
+ * Outro card — в стиле игровых уведомлений
+ */
+.outro-card {
+  --accent: #ff8a3d;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(460px, 100%);
+  padding: 22px 24px 24px;
+  border: 2px solid var(--accent);
+  border-radius: 22px;
+  text-align: left;
+  background: rgba(14, 16, 22, 0.92);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--accent) 30%, transparent);
+  animation: rise-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.outro-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.outro-label {
+  color: var(--accent);
+}
+
+.outro-time {
+  color: #7d8590;
+}
+
+.outro-title {
+  font-size: clamp(24px, 4.5vw, 32px);
+  line-height: 1.15;
+  max-width: none;
+}
+
+.outro-lead {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #b9c0cc;
+}
+
+.outro-stats {
+  display: flex;
+  gap: 10px;
+}
+
+.outro-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.outro-stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7d8590;
+}
+
+.outro-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.outro-stat-value .new-best {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.outro-endings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.outro-endings-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.outro-ending {
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f2f4f8;
+}
+
+.outro-ending.is-locked {
+  color: #5c636e;
+  border-style: dashed;
+}
+
+.outro-ending.is-current {
+  border-color: var(--accent);
+}
+
+.outro-card .button {
+  align-self: stretch;
+  background: var(--accent);
+  box-shadow: none;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+}
+
+/* Низкий экран (ноутбук с открытой панелью закладок, телефон горизонтально) — карточка компактнее */
+@media (max-height: 640px) {
+  .outro-card {
+    gap: 10px;
+    padding: 16px 18px 18px;
+  }
+
+  .outro-title {
+    font-size: 22px;
+  }
+
+  .outro-lead {
+    font-size: 14px;
+  }
+
+  .outro-stat {
+    padding: 6px 10px;
+  }
+
+  .outro-stat-value {
+    font-size: 18px;
   }
 }
