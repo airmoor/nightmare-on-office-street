@@ -5,7 +5,10 @@ import * as THREE from 'three'
  * Это проще и легче, чем 3D Text: текст — просто картинка на плоскости или спрайте
  */
 
+// Уведомления — это чужие приложения, у них свой «системный» шрифт.
+// Всё, что принадлежит самому офису (экран героя, надписи над столами), — моноширинный, как интерфейс игры
 const FONT_FAMILY = 'Inter, system-ui, -apple-system, Segoe UI, sans-serif'
+const MONO_FAMILY = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 
 // Разбиваем текст на строки, чтобы он влезал в maxWidth
 const wrapText = (context, text, maxWidth) => {
@@ -86,13 +89,13 @@ export const createGlowLabelTexture = (text, color = '#ff4d4d') => {
 
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
-    context.font = `800 ${fontSize}px ${FONT_FAMILY}`
+    context.font = `600 ${fontSize}px ${MONO_FAMILY}`
     const textWidth = context.measureText(text).width
 
     canvas.width = Math.ceil(textWidth + padding * 2)
     canvas.height = fontSize + padding * 2
 
-    context.font = `800 ${fontSize}px ${FONT_FAMILY}`
+    context.font = `600 ${fontSize}px ${MONO_FAMILY}`
     context.textBaseline = 'middle'
     context.fillStyle = color
     context.shadowColor = color
@@ -115,7 +118,7 @@ export const createScreenTexture = ({ width = 512, height = 288 }) => {
 
     const redraw = (draw) => {
         context.clearRect(0, 0, width, height)
-        draw(context, width, height, FONT_FAMILY)
+        draw(context, width, height, MONO_FAMILY)
         texture.needsUpdate = true // говорим Three.js, что картинку надо загрузить в GPU заново
     }
 

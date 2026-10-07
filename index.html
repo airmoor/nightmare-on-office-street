@@ -5,41 +5,74 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nightmare on Office Street</title>
     <meta name="description" content="A small Halloween story about layoffs, AI hype and a guy who just wants a quiet life. Made with Three.js." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
     <canvas class="webgl"></canvas>
 
-    <!-- Стартовый экран: нужен ещё и потому, что браузер включает звук только после клика -->
+    <!-- Стартовый экран: тёмный офис, горит один монитор. Нужен ещё и потому, что браузер включает звук только после клика -->
     <section class="overlay intro" data-intro>
-      <p class="eyebrow">Halloween · Night shift</p>
-      <h1>Nightmare on<br />Office Street</h1>
-      <p class="lead">Somewhere in an open office, the lights are going out one by one.</p>
-      <!-- Правила: цель + два действия. Шкалы в карточках того же цвета, что и в HUD -->
-      <div class="rules">
-        <p class="rules-goal">Survive until <strong>06:00</strong> — don't get fired, don't burn out</p>
-        <ul class="rules-cards">
-          <li class="rule-card rule-card-performance">
-            <p class="rule-action"><span class="rule-key">Hold</span> the monitor</p>
-            <p class="rule-hint">to work</p>
-            <p class="rule-effect">
-              <span class="rule-meter"><span class="rule-meter-fill"></span></span>
-              <span>Performance ↑</span>
-            </p>
-          </li>
-          <li class="rule-card rule-card-stress">
-            <p class="rule-action"><span class="rule-key" data-action-word>Click</span> notifications</p>
-            <p class="rule-hint">before they reach you</p>
-            <p class="rule-effect">
-              <span class="rule-meter"><span class="rule-meter-fill"></span></span>
-              <span>Stress ↓</span>
-            </p>
-          </li>
-        </ul>
-        <p class="rules-tip">Clear several in a row for a <strong>combo</strong></p>
+      <div class="intro-grain" aria-hidden="true"></div>
+      <p class="intro-clock" aria-hidden="true"><span data-intro-clock>21:58</span></p>
+
+      <div class="intro-body">
+        <h1 class="intro-title">Nightmare<br />on Office<br />Street</h1>
+        <p class="intro-lead">Somewhere in an open office,<br />the lights are going out one by one.</p>
+
+        <!-- Выбор уровня. Каждый следующий добавляет одну новую механику, описание под кнопками меняет JS -->
+        <div class="levels">
+          <span class="levels-label" id="levels-label">Role</span>
+          <div class="levels-options" role="radiogroup" aria-labelledby="levels-label">
+            <button type="button" class="level" role="radio" aria-checked="true" data-level="junior">Junior</button>
+            <button type="button" class="level" role="radio" aria-checked="false" data-level="middle">Middle</button>
+            <button type="button" class="level" role="radio" aria-checked="false" data-level="senior">Senior</button>
+            <button type="button" class="level" role="radio" aria-checked="false" data-level="lead">Lead</button>
+          </div>
+          <p class="level-desc" data-level-desc aria-live="polite"></p>
+        </div>
+
+        <!-- Смена начинается удержанием — это сразу учит главной механике игры (держать монитор) -->
+        <button type="button" class="clockin" data-start aria-label="Hold to clock in">
+          <span class="clockin-text" aria-hidden="true"><span class="clockin-prompt">&gt;</span> hold to clock in<span class="clockin-cursor">_</span></span>
+          <span class="clockin-track" aria-hidden="true"><span class="clockin-fill"></span></span>
+        </button>
+
+        <!-- Правила по запросу: открываются поверх сцены (десктоп — панель справа, телефон — bottom sheet), страница не двигается -->
+        <button type="button" class="handbook-toggle" data-handbook-open aria-haspopup="dialog" aria-controls="handbook">read the handbook<span class="handbook-caret" aria-hidden="true"></span></button>
+
+        <dialog class="handbook" id="handbook" data-handbook aria-labelledby="handbook-title">
+          <div class="handbook-sheet">
+            <header class="handbook-head">
+              <span class="handbook-grip" aria-hidden="true"></span>
+              <h2 class="handbook-title" id="handbook-title">employee_handbook.txt</h2>
+              <button type="button" class="handbook-close" data-handbook-close aria-label="Close handbook">[esc]</button>
+            </header>
+            <div class="handbook-body">
+            <p class="handbook-goal">Survive until <strong>06:00</strong>.<br />Don't get fired. Don't burn out.</p>
+            <ul class="handbook-rules">
+              <li class="handbook-rule handbook-rule-performance">
+                <p><span class="hud-key">hold</span> your monitor to work</p>
+                <p class="handbook-effect"><span class="handbook-meter" aria-hidden="true"></span>Performance ↑</p>
+              </li>
+              <li class="handbook-rule handbook-rule-stress">
+                <p><span class="hud-key" data-action-word>Click</span> notifications before they hit</p>
+                <p class="handbook-effect"><span class="handbook-meter" aria-hidden="true"></span>Stress ↓</p>
+              </li>
+            </ul>
+            <p class="handbook-tip">Clear several in a row for a combo.</p>
+            <p class="handbook-lamp">Your lamp is yours. You can always switch it off.</p>
+            </div>
+            <!-- Прочитал правила — начинаешь смену прямо отсюда -->
+            <button type="button" class="clockin handbook-clockin" data-start aria-label="Hold to clock in">
+              <span class="clockin-text" aria-hidden="true"><span class="clockin-prompt">&gt;</span> hold to clock in<span class="clockin-cursor">_</span></span>
+              <span class="clockin-track" aria-hidden="true"><span class="clockin-fill"></span></span>
+            </button>
+          </div>
+        </dialog>
       </div>
-      <button class="button" data-start>Start shift</button>
-      <p class="note">Best with headphones 🎧</p>
     </section>
 
     <!-- Красная виньетка по краям экрана: чем выше стресс, тем она сильнее -->
@@ -82,6 +115,12 @@
     <!-- Часы смены: цель игры — дотянуть до 06:00 -->
     <div class="clock" data-clock-panel hidden>
       <span class="clock-time" data-clock>22:00</span>
+      <!-- Полоска ночи: от 22:00 до 06:00. Точка бежит к утру, заливка теплеет к рассвету. --night (0 → 1) задаёт JS -->
+      <span class="night" aria-hidden="true">
+        <span class="night-edge">22:00</span>
+        <span class="night-track"><span class="night-fill"></span><span class="night-dot"></span></span>
+        <span class="night-edge">06:00</span>
+      </span>
       <span class="clock-goal" data-clock-goal>Survive until 06:00</span>
     </div>
 
@@ -91,33 +130,45 @@
       <button class="button" data-go-home>Go home 🌅</button>
     </div>
 
-    <!-- Финал оформлен как последнее уведомление, в том же стиле, что и карточки в игре -->
+    <!-- Финал в два такта. Сначала сюжет: последнее уведомление героя прилетает в сцену, как карточки в игре.
+         Потом итоги — тем же терминалом, что и интро: слева текст, справа офис, где всё только что случилось -->
     <section class="overlay outro" data-outro hidden>
-      <article class="outro-card" data-outro-card>
-        <header class="outro-header">
-          <span class="outro-label" data-outro-ending></span>
-          <span class="outro-time" data-outro-time></span>
+      <div class="intro-grain" aria-hidden="true"></div>
+
+      <aside class="outro-story" data-outro-story aria-live="polite">
+        <header class="outro-story-header">
+          <span data-outro-story-sender></span>
+          <span data-outro-story-time></span>
         </header>
+        <p class="outro-story-title" data-outro-story-title></p>
+        <p class="outro-story-meta" data-outro-story-meta hidden></p>
+        <p class="outro-story-text" data-outro-story-text hidden></p>
+      </aside>
+
+      <div class="outro-body" data-outro-body hidden>
         <h2 class="outro-title" data-outro-title></h2>
-        <p class="outro-meta" data-outro-meta hidden></p>
-        <div class="outro-lead" data-outro-lead></div>
-        <div class="outro-stats">
-          <div class="outro-stat">
-            <span class="outro-stat-label">Score</span>
-            <strong class="outro-stat-value" data-outro-score></strong>
-          </div>
-          <div class="outro-stat">
-            <span class="outro-stat-label">Best</span>
-            <strong class="outro-stat-value" data-outro-best></strong>
-          </div>
-        </div>
-        <div class="outro-endings">
-          <span class="outro-stat-label">Endings found <span data-outro-found></span></span>
-          <ul class="outro-endings-list" data-outro-endings></ul>
-        </div>
-        <button class="button" data-restart>Try another night</button>
-      </article>
-      <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
+        <p class="outro-cause" data-outro-cause></p>
+        <p class="outro-line" data-outro-line></p>
+        <p class="outro-tip" data-outro-tip hidden></p>
+
+        <dl class="outro-log" data-outro-log></dl>
+
+        <p class="outro-endings">
+          <span class="outro-endings-label">endings <span data-outro-found></span></span>
+          <span class="outro-endings-list" data-outro-endings></span>
+          <span class="outro-endings-name" data-outro-ending-name></span>
+        </p>
+
+        <!-- Новая смена — тем же удержанием, что и в интро: игра заканчивается тем же жестом, каким началась -->
+        <button type="button" class="clockin outro-restart" data-restart aria-label="Hold to clock in again">
+          <span class="clockin-text" aria-hidden="true"><span class="clockin-prompt">&gt;</span> hold to clock in again<span class="clockin-cursor">_</span></span>
+          <span class="clockin-track" aria-hidden="true"><span class="clockin-fill"></span></span>
+        </button>
+        <!-- Появляется только после спокойной концовки, если есть уровень выше -->
+        <button type="button" class="outro-promote" data-promote hidden></button>
+
+        <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
+      </div>
     </section>
 
     <!-- Ещё одно уведомление уже после финала — выезжает сверху, как пуш на телефоне -->

@@ -1,3 +1,15 @@
+:root {
+  /* Три роли цвета: свечение монитора (интерфейс), красный (угроза), приглушённый (второстепенное) */
+  --glow: #d4f1ff;
+  --glow-soft: rgba(150, 215, 255, 0.35);
+  --text: #c9d6dc;
+  --dim: #84949c; /* ≈6:1 на почти чёрном */
+  --danger: #ff5a52;
+  --line: rgba(190, 235, 255, 0.16);
+  --panel: rgba(4, 8, 11, 0.72);
+  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -8,8 +20,8 @@ html,
 body {
   overflow: hidden;
   background: #05060a;
-  color: #f2f4f8;
-  font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text);
+  font-family: var(--mono);
 }
 
 .webgl {
@@ -43,88 +55,61 @@ body {
   background: radial-gradient(circle at 50% 45%, rgba(5, 6, 10, 0.55), rgba(5, 6, 10, 0.92));
 }
 
-.outro {
-  /* Карточка лежит поверх сцены, сверху сцена остаётся видна */
-  z-index: 6;
-  background: linear-gradient(to top, rgba(5, 6, 10, 0.85), rgba(5, 6, 10, 0) 70%);
-  justify-content: flex-start;
-  gap: 14px;
-  padding-bottom: max(24px, 6vh);
-  /* Если экран низкий, карточку можно прокрутить. margin-top: auto у карточки прижимает её к низу,
-     но, в отличие от justify-content: flex-end, не обрезает верх при переполнении */
-  overflow-y: auto;
-}
-
-.outro > :first-child {
-  margin-top: auto;
-}
-
 .is-hidden {
   opacity: 0;
   pointer-events: none;
 }
 
-.eyebrow {
-  font-size: 13px;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: #ff8a3d;
-}
-
-h1 {
-  font-size: clamp(40px, 9vw, 88px);
-  line-height: 0.95;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  text-shadow: 0 0 40px rgba(255, 90, 90, 0.25);
-}
-
 h2 {
-  font-size: clamp(26px, 5vw, 44px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: clamp(24px, 4.5vw, 40px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
   max-width: 18em;
-}
-
-.lead {
-  max-width: 32em;
-  font-size: clamp(15px, 2.2vw, 18px);
-  line-height: 1.5;
-  color: #b9c0cc;
 }
 
 .note,
 .credits {
-  font-size: 13px;
-  color: #7d8590;
+  font-size: 12px;
+  color: var(--dim);
 }
 
 /**
  * Buttons
  */
 .button {
-  border: 0;
-  border-radius: 999px;
-  padding: 14px 32px;
+  border: 1px solid rgba(190, 235, 255, 0.45);
+  border-radius: 2px;
+  padding: 12px 20px;
   font: inherit;
-  font-size: 16px;
-  font-weight: 700;
-  color: #1a0d05;
-  background: #ff8a3d;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--glow);
+  background: rgba(190, 235, 255, 0.06);
   cursor: pointer;
-  box-shadow: 0 0 32px rgba(255, 138, 61, 0.35);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  text-shadow: 0 0 14px var(--glow-soft);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.button::before {
+  content: '> ';
+  opacity: 0.6;
 }
 
 .button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 0 48px rgba(255, 138, 61, 0.55);
+  border-color: var(--glow);
+  background: rgba(190, 235, 255, 0.12);
+}
+
+.button:focus-visible {
+  outline: 1px dashed var(--glow);
+  outline-offset: 4px;
 }
 
 .button-ghost {
-  color: #f2f4f8;
-  background: rgba(255, 255, 255, 0.1);
-  box-shadow: none;
+  color: var(--text);
+  border-color: var(--line);
+  background: none;
+  text-shadow: none;
 }
 
 .mute {
@@ -135,28 +120,29 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
-  padding: 0 14px 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 999px;
+  height: 36px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  color: #f2f4f8;
-  background: rgba(14, 16, 22, 0.7);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: lowercase;
+  color: var(--text);
+  background: var(--panel);
   backdrop-filter: blur(6px);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 .mute:hover {
-  background: rgba(40, 44, 54, 0.85);
-  border-color: rgba(255, 255, 255, 0.35);
+  color: var(--glow);
+  border-color: rgba(190, 235, 255, 0.45);
 }
 
 .mute-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   fill: currentColor;
   stroke: currentColor;
   stroke-width: 2;
@@ -173,7 +159,7 @@ h2 {
 }
 
 .mute.is-muted {
-  color: #9aa3b0;
+  color: var(--dim);
 }
 
 @keyframes fade-in {
@@ -184,178 +170,590 @@ h2 {
 
 @keyframes pulse {
   50% {
-    box-shadow: 0 0 64px rgba(255, 138, 61, 0.7);
+    border-color: var(--glow);
+    box-shadow: 0 0 24px var(--glow-soft);
   }
 }
 
 /**
- * Rules on the intro screen
+ * Intro — тёмный офис, горит один монитор. Интерфейс как терминал на этом мониторе:
+ * моноширинный шрифт, холодный свет экрана, никаких карточек и кнопок-пилюль
  */
-.rules {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  width: min(560px, 100%);
+.intro {
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0;
+  padding: clamp(24px, 6vw, 88px);
+  padding-bottom: clamp(72px, 10vh, 112px);
+  text-align: left;
+  overflow: hidden;
+  /* Слева темно (там текст), справа — окно в офис, где светится стол героя */
+  background:
+    radial-gradient(ellipse 65% 75% at 64% 46%, rgba(3, 5, 8, 0) 0%, rgba(3, 5, 8, 0) 35%, rgba(3, 5, 8, 0.4) 70%, rgba(3, 5, 8, 0.92) 100%),
+    linear-gradient(90deg, rgba(3, 5, 8, 0.85) 0%, rgba(3, 5, 8, 0.35) 45%, rgba(3, 5, 8, 0) 70%);
 }
 
-.rules-goal {
-  font-size: clamp(15px, 2vw, 17px);
-  font-weight: 600;
-  color: #f2f4f8;
-  text-wrap: balance;
+/* Холодная цветокоррекция сцены, как на рефах: бирюза в тенях */
+.intro::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #0d4a5a;
+  mix-blend-mode: soft-light;
+  opacity: 0.3;
+  pointer-events: none;
 }
 
-.rules-goal strong {
-  color: #ff8a3d;
+/* Плёночное зерно: SVG-шум, который дёргается по кадрам */
+.intro-grain {
+  position: absolute;
+  inset: -50%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.09;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  animation: intro-grain 0.6s steps(6) infinite;
 }
 
-.rules-cards {
-  list-style: none;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  width: 100%;
+@keyframes intro-grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3%, 2%); }
+  40% { transform: translate(2%, -4%); }
+  60% { transform: translate(-4%, -1%); }
+  80% { transform: translate(3%, 3%); }
+  100% { transform: translate(0, 0); }
 }
 
-.rule-card {
+.intro-clock {
+  position: absolute;
+  top: clamp(20px, 4vw, 40px);
+  right: clamp(20px, 4vw, 40px);
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.intro-clock .blink {
+  animation: intro-blink 1s steps(1) infinite;
+}
+
+.intro-body {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  text-align: left;
-  background: rgba(14, 16, 22, 0.65);
-  backdrop-filter: blur(6px);
+  width: min(560px, 100%);
 }
 
-.rule-action {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 700;
-  color: #f2f4f8;
-}
-
-/* Та же «клавиша», что и в HUD, только крупнее */
-.rule-key {
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+.intro-title {
+  font-family: inherit;
+  font-size: clamp(40px, 6.6vw, 92px);
+  font-weight: 300;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
   text-transform: uppercase;
-  color: #1a0d05;
-  background: #ff8a3d;
+  color: var(--glow);
+  text-shadow: 0 0 28px rgba(150, 215, 255, 0.28), 0 0 2px rgba(212, 241, 255, 0.6);
+  animation: intro-flicker 9s linear infinite;
 }
 
-.rule-hint {
-  font-size: 13px;
-  color: #9aa3b0;
+/* Редкий сбой, как у монитора на последнем издыхании — не чаще пары раз за цикл */
+@keyframes intro-flicker {
+  0%, 61%, 63.5%, 64.5%, 100% { opacity: 1; }
+  62% { opacity: 0.35; }
+  64% { opacity: 0.7; }
 }
 
-.rule-effect {
+.intro-lead {
+  margin-top: clamp(16px, 2.4vh, 28px);
+  font-size: clamp(14px, 1.3vw, 16px);
+  line-height: 1.55;
+  color: var(--text);
+}
+
+/**
+ * Level picker — строка терминала: role  junior  middle  senior  lead
+ */
+.levels {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 8px;
+  margin-top: clamp(28px, 5vh, 56px);
+  width: 100%;
+}
+
+.levels-label {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.levels-options {
   display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+
+.level {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 14px;
+  text-transform: lowercase;
+  color: var(--dim);
+  background: none;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.level:hover {
+  color: var(--text);
+}
+
+.level[aria-checked='true'] {
+  color: var(--glow);
+  background: rgba(190, 235, 255, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(190, 235, 255, 0.45);
+}
+
+.level:focus-visible {
+  outline: 1px dashed var(--glow);
+  outline-offset: 3px;
+}
+
+/* Уровень, пройденный до утра */
+.level.is-passed::after {
+  content: ' ✓';
+  color: var(--dim);
+}
+
+.level-desc {
+  grid-column: 2;
+  min-height: 2.8em; /* две строки: чтобы строка старта не прыгала при смене уровня */
+  max-width: 34em;
+  padding-left: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--dim);
+  text-wrap: balance;
+}
+
+.levels:has([data-level='lead'][aria-checked='true']) .level-desc {
+  color: var(--danger);
+}
+
+/**
+ * Clock in — держишь, полоса заполняется, отпустил — сползает назад
+ */
+.clockin {
+  --hold: 0;
+  display: grid;
+  gap: 10px;
+  width: min(320px, 100%);
+  margin-top: clamp(20px, 3.5vh, 36px);
+  padding: 8px 0;
+  border: 0;
+  font: inherit;
+  font-size: 16px;
+  text-align: left;
+  color: var(--glow);
+  background: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+
+.clockin-text {
+  text-shadow: 0 0 18px rgba(150, 215, 255, 0.35);
+}
+
+.clockin-prompt {
+  display: inline-block;
+  margin-right: 4px;
+  color: var(--dim);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.clockin:hover .clockin-prompt,
+.clockin.is-holding .clockin-prompt {
+  color: var(--glow);
+  transform: translateX(3px);
+}
+
+.clockin-cursor {
+  animation: intro-blink 1s steps(1) infinite;
+}
+
+.clockin-track {
+  position: relative;
+  height: 2px;
+  background: rgba(190, 235, 255, 0.14);
+}
+
+.clockin-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--hold) * 100%);
+  background: var(--glow);
+  box-shadow: 0 0 12px rgba(150, 215, 255, 0.8);
+}
+
+.clockin:focus-visible {
+  outline: 1px dashed var(--glow);
+  outline-offset: 6px;
+}
+
+/**
+ * Handbook — правила по запросу. Нативный <dialog> поверх сцены: страница не двигается.
+ * Десктоп — панель справа, офис под ней затемнён. Телефон — bottom sheet
+ */
+.handbook-toggle {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  margin-top: 8px;
+  min-height: 40px;
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--dim);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.handbook-toggle::before {
+  content: '?';
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
   font-size: 11px;
-  font-weight: 700;
+}
+
+.handbook-caret::before {
+  content: '▸';
+  display: inline-block;
+}
+
+.handbook-toggle:hover,
+.handbook-toggle[aria-expanded='true'] {
+  color: var(--text);
+}
+
+.handbook-toggle:focus-visible,
+.handbook-close:focus-visible {
+  outline: 1px dashed var(--glow);
+  outline-offset: 4px;
+}
+
+.handbook {
+  /* Сам dialog прозрачный и без отступов: клик мимо .handbook-sheet = клик по затемнению */
+  position: fixed;
+  inset: 0 clamp(20px, 5vw, 72px) 0 auto;
+  width: min(440px, calc(100vw - 32px));
+  max-width: none;
+  max-height: none;
+  height: fit-content;
+  margin: auto 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: var(--mono);
+  text-align: left;
+  overflow: visible;
+}
+
+.handbook::backdrop {
+  background: rgba(3, 5, 8, 0.45);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: handbook-fade 0.2s ease both;
+}
+
+.handbook-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 48px);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: rgba(4, 8, 11, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 40px rgba(150, 215, 255, 0.06);
+  animation: handbook-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.handbook.is-closing .handbook-sheet {
+  animation: handbook-out 0.18s ease both;
+}
+
+.handbook.is-closing::backdrop {
+  animation: handbook-fade 0.18s ease reverse both;
+}
+
+.handbook-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.handbook-grip {
+  display: none;
+}
+
+.handbook-title {
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+
+.handbook-close {
+  min-width: 44px;
+  min-height: 32px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--dim);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.handbook-close:hover {
+  color: var(--glow);
+}
+
+.handbook-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  animation: handbook-print 0.35s steps(6) 0.08s both;
+}
+
+.handbook-clockin {
+  width: auto;
+  margin: 0;
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.handbook-clockin:focus-visible {
+  outline-offset: -4px;
+}
+
+@keyframes handbook-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes handbook-out {
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+@keyframes handbook-fade {
+  from { opacity: 0; }
+}
+
+/* Печатается построчно, как вывод в терминале */
+@keyframes handbook-print {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+.handbook-goal strong {
+  font-weight: 600;
+  color: var(--glow);
+}
+
+.handbook-rules {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.handbook-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: rgba(4, 8, 11, 0.55);
+}
+
+.handbook-effect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 11px;
+  font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  white-space: nowrap;
 }
 
-.rule-meter {
-  flex: 1;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  overflow: hidden;
+/* Мини-шкала — та же, что в HUD */
+.handbook-meter {
+  position: relative;
+  width: 44px;
+  height: 4px;
+  background: rgba(190, 235, 255, 0.1);
 }
 
-.rule-meter-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
+.handbook-meter::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 70%;
 }
 
-.rule-card-performance .rule-effect {
-  color: #34d399;
+.handbook-rule-performance .handbook-effect {
+  color: var(--glow);
 }
 
-.rule-card-performance .rule-meter-fill {
-  background: #34d399;
-  animation: rule-meter-up 2.4s ease-in-out infinite alternate;
+.handbook-rule-performance .handbook-meter::after {
+  background: var(--glow);
+  box-shadow: 0 0 8px var(--glow-soft);
 }
 
-.rule-card-stress .rule-effect {
-  color: #ff5a5a;
+.handbook-rule-stress .handbook-effect {
+  color: var(--danger);
 }
 
-.rule-card-stress .rule-meter-fill {
-  background: #ff5a5a;
-  animation: rule-meter-down 2.4s ease-in-out infinite alternate;
+.handbook-rule-stress .handbook-meter::after {
+  width: 25%;
+  background: var(--danger);
 }
 
-/* Шкалы сами показывают эффект действия: performance растёт, stress падает */
-@keyframes rule-meter-up {
-  from {
-    width: 30%;
+.handbook-tip {
+  color: var(--dim);
+}
+
+/* Тот же тёплый цвет, что у подсказки над лампой в игре */
+.handbook-lamp {
+  color: #ffd9a0;
+  opacity: 0.75;
+}
+
+@keyframes handbook-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes handbook-sheet-out {
+  to { transform: translateY(100%); }
+}
+
+@keyframes intro-blink {
+  50% { opacity: 0; }
+}
+
+/* Телефон: текст внизу, офис сверху; снизу место под кнопку звука */
+@media (max-width: 560px) {
+  .intro {
+    padding: 20px 16px 84px;
+    background:
+      /* Темним только низ под текстом, верх — чистое окно в офис */
+      linear-gradient(0deg, rgba(3, 5, 8, 0.92) 0%, rgba(3, 5, 8, 0.78) 34%, rgba(3, 5, 8, 0.25) 52%, rgba(3, 5, 8, 0) 66%),
+      radial-gradient(ellipse 95% 55% at 50% 26%, rgba(3, 5, 8, 0) 45%, rgba(3, 5, 8, 0.5) 100%);
   }
-  to {
-    width: 85%;
+
+  /* Handbook — bottom sheet во всю ширину */
+  .handbook {
+    inset: auto 0 0 0;
+    width: 100%;
+    margin: 0;
   }
-}
 
-@keyframes rule-meter-down {
-  from {
-    width: 80%;
+  .handbook-sheet {
+    max-height: 85dvh;
+    border-width: 1px 0 0;
+    border-radius: 10px 10px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation-name: handbook-sheet-in;
+    animation-duration: 0.28s;
   }
-  to {
-    width: 20%;
+
+  .handbook.is-closing .handbook-sheet {
+    animation-name: handbook-sheet-out;
   }
-}
 
-.rules-tip {
-  font-size: 13px;
-  color: #9aa3b0;
-}
+  .handbook-head {
+    padding-top: 16px;
+  }
 
-.rules-tip strong {
-  color: #ff8a3d;
-}
+  .handbook-grip {
+    display: block;
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--line);
+    transform: translateX(-50%);
+  }
 
-@media (max-width: 520px) {
-  .rules-cards {
+  .levels {
     grid-template-columns: 1fr;
   }
-}
 
-/* Невысокие экраны: ужимаем отступы, чтобы кнопка не уезжала за край */
-@media (max-height: 760px) {
-  .intro {
-    gap: 14px;
+  .levels-options {
+    margin-left: -10px;
   }
 
-  .intro h1 {
-    font-size: clamp(36px, 7vw, 64px);
+  .level-desc {
+    grid-column: 1;
+    padding-left: 0;
+  }
+}
+
+/* Невысокие экраны: ужимаем отступы, чтобы строка старта не уезжала за край */
+@media (max-height: 640px) {
+  .intro-title {
+    font-size: clamp(32px, 5vw, 56px);
+  }
+
+  .levels {
+    margin-top: 20px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rule-card-performance .rule-meter-fill {
+  .handbook-body,
+  .handbook-sheet,
+  .handbook.is-closing .handbook-sheet,
+  .handbook::backdrop,
+  .intro-grain,
+  .intro-title,
+  .intro-clock .blink,
+  .clockin-cursor {
     animation: none;
-    width: 85%;
-  }
-
-  .rule-card-stress .rule-meter-fill {
-    animation: none;
-    width: 20%;
   }
 }
 
@@ -370,11 +768,11 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(240px, calc(100% - 32px));
+  width: min(256px, calc(100% - 32px));
   padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  background: rgba(14, 16, 22, 0.65);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--panel);
   backdrop-filter: blur(6px);
   pointer-events: none;
   animation: fade-in 1s ease both;
@@ -388,16 +786,15 @@ h2 {
 
 .meter-label {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #b9c0cc;
+  color: var(--dim);
 }
 
 .meter-track {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
+  height: 4px;
+  background: rgba(190, 235, 255, 0.1);
   overflow: hidden;
 }
 
@@ -405,26 +802,27 @@ h2 {
   display: block;
   height: 100%;
   width: 50%;
-  border-radius: inherit;
   transition: width 0.15s linear;
 }
 
 .meter-performance .meter-fill {
-  background: #34d399;
+  background: var(--glow);
+  box-shadow: 0 0 8px var(--glow-soft);
 }
 
 .meter-stress .meter-fill {
-  background: #ff5a5a;
+  background: var(--danger);
 }
 
 /* Мигаем, когда шкала в опасной зоне */
 .meter.is-danger .meter-label {
-  color: #ff8a8a;
+  color: var(--danger);
   animation: blink 0.6s steps(2) infinite;
 }
 
 .meter-performance.is-danger .meter-fill {
-  background: #f5a524;
+  background: var(--danger);
+  box-shadow: none;
 }
 
 /**
@@ -481,17 +879,18 @@ h2 {
 
 .hud-score-value {
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: #f2f4f8;
+  color: var(--glow);
+  text-shadow: 0 0 14px var(--glow-soft);
 }
 
 .hud-combo {
   display: inline-block;
   margin-left: auto;
   font-size: 13px;
-  font-weight: 800;
-  color: #ff8a3d;
+  font-weight: 600;
+  color: var(--glow);
 }
 
 .hud-combo.is-bump {
@@ -504,9 +903,10 @@ h2 {
   flex-direction: column;
   gap: 4px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 12px;
-  color: #b9c0cc;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
 }
 
 .hud-key {
@@ -514,12 +914,13 @@ h2 {
   min-width: 42px;
   padding: 1px 6px;
   margin-right: 4px;
-  border-radius: 6px;
+  border-radius: 2px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   text-align: center;
-  color: #f2f4f8;
-  background: rgba(255, 255, 255, 0.12);
+  text-transform: lowercase;
+  color: var(--glow);
+  background: rgba(190, 235, 255, 0.1);
 }
 
 /**
@@ -540,9 +941,9 @@ h2 {
   top: -36px;
   width: 72px;
   height: 72px;
-  border: 2px solid #ff8a3d;
+  border: 1px solid var(--glow);
   border-radius: 50%;
-  box-shadow: 0 0 24px rgba(255, 138, 61, 0.6);
+  box-shadow: 0 0 24px var(--glow-soft);
   animation: coach-ring 1.2s ease-out infinite;
 }
 
@@ -557,13 +958,13 @@ h2 {
   width: max-content;
   max-width: calc(100vw - 32px);
   padding: 10px 14px;
-  border: 1px solid rgba(255, 138, 61, 0.5);
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 700;
+  border: 1px solid rgba(190, 235, 255, 0.45);
+  border-radius: 2px;
+  font-size: 14px;
+  font-weight: 500;
   text-align: center;
-  color: #f2f4f8;
-  background: rgba(14, 16, 22, 0.88);
+  color: var(--glow);
+  background: rgba(4, 8, 11, 0.9);
   backdrop-filter: blur(6px);
   /* --shift задаёт JS, когда цель у края экрана */
   transform: translateX(calc(-50% + var(--shift, 0px)));
@@ -581,10 +982,22 @@ h2 {
   bottom: -6px;
   width: 10px;
   height: 10px;
-  border-right: 1px solid rgba(255, 138, 61, 0.5);
-  border-bottom: 1px solid rgba(255, 138, 61, 0.5);
-  background: rgba(14, 16, 22, 0.88);
+  border-right: 1px solid rgba(190, 235, 255, 0.45);
+  border-bottom: 1px solid rgba(190, 235, 255, 0.45);
+  background: rgba(4, 8, 11, 0.9);
   transform: translateX(-50%) rotate(45deg);
+}
+
+/* Плашка клавиши в подсказках обучения */
+.rule-key {
+  padding: 1px 7px;
+  border-radius: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #04080b;
+  background: var(--glow);
 }
 
 .coach-bubble .rule-key {
@@ -592,7 +1005,8 @@ h2 {
 }
 
 .coach-bubble strong {
-  color: #ff8a3d;
+  color: var(--glow);
+  font-weight: 600;
 }
 
 .coach-skip {
@@ -603,25 +1017,26 @@ h2 {
   padding: 8px 12px;
   border: 0;
   font: inherit;
-  font-size: 13px;
-  color: #9aa3b0;
+  font-size: 12px;
+  color: var(--dim);
   text-decoration: underline;
+  text-underline-offset: 3px;
   background: none;
   cursor: pointer;
   transform: translateX(-50%);
 }
 
 .coach-skip:hover {
-  color: #f2f4f8;
+  color: var(--glow);
 }
 
 /* Подсвечиваем шкалу, которую наполняет текущее действие */
 .meter.is-coached .meter-label {
-  color: #34d399;
+  color: var(--glow);
 }
 
 .meter.is-coached .meter-track {
-  box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.45), 0 0 16px rgba(52, 211, 153, 0.5);
+  box-shadow: 0 0 0 1px rgba(190, 235, 255, 0.5), 0 0 14px var(--glow-soft);
 }
 
 @keyframes coach-ring {
@@ -654,16 +1069,16 @@ h2 {
 .popup {
   position: absolute;
   transform: translate(-50%, -50%);
-  font-size: 18px;
-  font-weight: 800;
-  color: #ffd27a;
-  text-shadow: 0 0 12px rgba(255, 138, 61, 0.6);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--glow);
+  text-shadow: 0 0 12px var(--glow-soft);
   white-space: nowrap;
   animation: popup 0.9s ease-out forwards;
 }
 
 .popup.is-bad {
-  color: #ff6b6b;
+  color: var(--danger);
   text-shadow: 0 0 12px rgba(255, 60, 60, 0.6);
 }
 
@@ -701,9 +1116,9 @@ h2 {
   align-items: center;
   gap: 2px;
   padding: 8px 18px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
-  background: rgba(14, 16, 22, 0.65);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--panel);
   backdrop-filter: blur(6px);
   pointer-events: none;
   animation: fade-in 1s ease both;
@@ -711,35 +1126,152 @@ h2 {
 
 .clock-time {
   font-size: 24px;
-  font-weight: 800;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  color: var(--glow);
+  text-shadow: 0 0 14px var(--glow-soft);
 }
 
 .clock-goal {
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #ff8a3d;
+  color: var(--dim);
 }
 
-/* На узком экране часы уезжают вправо, чтобы не налезать на HUD слева */
-@media (max-width: 560px) {
+/**
+ * Night bar — полоска ночи под часами: 22:00 ——●—— 06:00
+ * --night (0 → 1) задаёт JS. Градиент лежит на всю ширину дорожки, а clip-path открывает его до точки —
+ * поэтому цвет на конце заливки сам теплеет от ночного синего к рассветному оранжевому
+ */
+.clock {
+  --night: 0;
+}
+
+.night {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 2px;
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}
+
+.night-track {
+  position: relative;
+  width: 140px;
+  height: 2px;
+  background: rgba(190, 235, 255, 0.12);
+}
+
+.night-fill {
+  position: absolute;
+  inset: 0;
+  /* Ночь холодная, к 06:00 конец полосы теплеет — рассвет */
+  background: linear-gradient(90deg, #2c4a66, #6d93b3 60%, #ffb27a);
+  clip-path: inset(0 calc((1 - var(--night)) * 100%) 0 0);
+}
+
+.night-dot {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--night) * 100%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--glow);
+  box-shadow: 0 0 8px var(--glow-soft);
+  transform: translate(-50%, -50%);
+}
+
+/* Когда по центру не хватает места, часы уезжают вправо, чтобы не налезать на HUD слева */
+@media (max-width: 900px) {
   .clock {
     left: auto;
     right: 16px;
     transform: none;
     align-items: flex-end;
+  }
+}
+
+@media (max-width: 560px) {
+  .clock {
     padding: 6px 12px;
+  }
+
+  .hud-rules {
+    white-space: normal;
   }
 
   .clock-time {
     font-size: 18px;
   }
 
+  /* На телефоне HUD — только счёт и две шкалы: правила живут в справочнике на главной и в обучении */
   .hud {
-    width: min(200px, calc(100% - 150px));
+    width: min(180px, calc(100% - 150px));
+    gap: 7px;
+    padding: 9px 12px;
+  }
+
+  .hud-rules {
+    display: none;
+  }
+
+  .hud-score-value {
+    font-size: 18px;
+  }
+
+  .meter {
+    gap: 3px;
+  }
+
+  .meter-label {
+    font-size: 10px;
+  }
+
+  /* Кнопка звука — только иконка, чтобы не перекрывать карточки и подпись в финале */
+  .mute {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .mute-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .credits {
+    padding-right: 48px;
+  }
+
+  /* Места мало: без подписей 22:00 / 06:00, полоска по ширине часов, подпись уровня плотнее */
+  .night {
+    align-self: stretch;
+  }
+
+  .night-edge {
+    display: none;
+  }
+
+  .night-track {
+    flex: 1;
+    width: auto;
+  }
+
+  .clock-goal {
+    font-size: 10px;
+    letter-spacing: 0.08em;
   }
 }
 
@@ -763,77 +1295,14 @@ h2 {
 }
 
 .shift-over-title {
-  font-size: clamp(18px, 3vw, 26px);
-  font-weight: 800;
-  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.8);
+  font-size: clamp(16px, 2.6vw, 22px);
+  font-weight: 400;
+  color: var(--glow);
+  text-shadow: 0 0 18px var(--glow-soft), 0 2px 24px rgba(0, 0, 0, 0.8);
 }
 
 .shift-over .button {
   animation: pulse 1.6s ease-in-out 0.8s infinite;
-}
-
-/**
- * Outro card — в стиле игровых уведомлений
- */
-.outro-card {
-  --accent: #ff8a3d;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: min(460px, 100%);
-  padding: 22px 24px 24px;
-  border: 2px solid var(--accent);
-  border-radius: 22px;
-  text-align: left;
-  background: rgba(14, 16, 22, 0.92);
-  box-shadow: 0 0 60px color-mix(in srgb, var(--accent) 30%, transparent);
-  animation: rise-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-.outro-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.outro-label {
-  color: var(--accent);
-}
-
-.outro-time {
-  color: #7d8590;
-}
-
-.outro-title {
-  font-size: clamp(24px, 4.5vw, 32px);
-  line-height: 1.15;
-  max-width: none;
-}
-
-/* Строчка как в приглашении календаря: «15 min · no agenda · camera on» */
-.outro-meta {
-  margin-top: -6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #7d8590;
-}
-
-.outro-lead {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 15px;
-  line-height: 1.5;
-  color: #b9c0cc;
-}
-
-/* Последний абзац — самая короткая и самая жуткая фраза, выделяем её */
-.outro-lead p:last-child {
-  color: #f2f4f8;
 }
 
 /**
@@ -849,10 +1318,11 @@ h2 {
   gap: 4px;
   width: min(360px, calc(100% - 32px));
   padding: 12px 16px;
-  border-left: 3px solid #a78bfa;
-  border-radius: 14px;
+  border: 1px solid var(--line);
+  border-left: 2px solid #a78bfa;
+  border-radius: 2px;
   text-align: left;
-  background: rgba(14, 16, 22, 0.94);
+  background: rgba(4, 8, 11, 0.94);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
   translate: -50% 0;
   animation: drop-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -863,19 +1333,20 @@ h2 {
   justify-content: space-between;
   gap: 12px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #a78bfa;
 }
 
 .outro-sting-header :last-child {
-  color: #7d8590;
+  color: var(--dim);
 }
 
 .outro-sting-text {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--glow);
 }
 
 @keyframes drop-in {
@@ -885,106 +1356,312 @@ h2 {
   }
 }
 
-.outro-stats {
-  display: flex;
-  gap: 10px;
+/**
+ * Outro — итоги в раскладке интро: терминал слева, офис справа.
+ * Сначала одна сюжетная карточка в сцене (.outro-story), через пару секунд — итоги (.outro-body)
+ */
+.outro {
+  --accent: var(--glow);
+  z-index: 6;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0;
+  padding: clamp(24px, 6vw, 88px);
+  padding-bottom: clamp(72px, 10vh, 112px);
+  text-align: left;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.outro-stat {
-  flex: 1;
+/* Пока висит только сюжетная карточка, сцена открыта. С итогами слева темнеет — как в интро */
+.outro::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(3, 5, 8, 0.88) 0%, rgba(3, 5, 8, 0.45) 42%, rgba(3, 5, 8, 0) 65%);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+  pointer-events: none;
+}
+
+.outro.is-summary::before {
+  opacity: 1;
+}
+
+.outro.is-summary {
+  pointer-events: auto;
+}
+
+/* Сюжетная карточка — как игровое уведомление: лежит в сцене справа, рядом с героем */
+.outro-story {
+  position: absolute;
+  top: clamp(72px, 18vh, 200px);
+  right: clamp(20px, 8vw, 140px);
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
+  gap: 6px;
+  width: min(320px, calc(100% - 40px));
+  padding: 12px 16px 14px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 2px;
+  background: rgba(4, 8, 11, 0.92);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55), 0 0 32px color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
+  animation: story-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.outro-stat-label {
+.outro-story-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #7d8590;
-}
-
-.outro-stat-value {
-  font-size: 22px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.outro-stat-value .new-best {
-  margin-left: 6px;
-  font-size: 12px;
   color: var(--accent);
 }
 
-.outro-endings {
+.outro-story-header :last-child {
+  color: var(--dim);
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
+.outro-story-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--glow);
+}
+
+.outro-story-meta {
+  margin-top: -2px;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.outro-story-text {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+@keyframes story-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.98);
+  }
+}
+
+/* Итоги */
+.outro-body {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: flex-start;
+  width: min(560px, 100%);
+  animation: summary-in 0.9s ease both;
+}
+
+@keyframes summary-in {
+  from { opacity: 0; }
+}
+
+.outro-title {
+  max-width: none;
+  font-size: clamp(40px, 6.6vw, 92px);
+  font-weight: 300;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  text-transform: uppercase;
+  color: var(--glow);
+  text-shadow: 0 0 28px rgba(150, 215, 255, 0.28), 0 0 2px rgba(212, 241, 255, 0.6);
+}
+
+/* Причина — простыми словами и цветом концовки: это главное, что нужно понять */
+.outro-cause {
+  margin-top: clamp(16px, 2.4vh, 28px);
+  font-size: clamp(14px, 1.3vw, 16px);
+  line-height: 1.55;
+  color: var(--accent);
+}
+
+.outro-line {
+  max-width: 34em;
+  font-size: clamp(14px, 1.3vw, 16px);
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.outro-tip {
+  max-width: 40em;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+/* Лог смены — две колонки, как вывод команды */
+.outro-log {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  column-gap: 32px;
+  row-gap: 2px;
+  margin-top: clamp(20px, 3.5vh, 36px);
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.outro-log dt {
+  color: var(--dim);
+}
+
+.outro-log dd {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.outro-flag {
+  margin-left: 10px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* Концовки — пять слотов в строку */
+.outro-endings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.outro-endings-label {
+  color: var(--dim);
 }
 
 .outro-endings-list {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: inline-flex;
+  gap: 4px;
 }
 
 .outro-ending {
-  padding: 5px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
   font-size: 13px;
-  font-weight: 600;
-  color: #f2f4f8;
 }
 
 .outro-ending.is-locked {
-  color: #5c636e;
   border-style: dashed;
 }
 
 .outro-ending.is-current {
   border-color: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
-.outro-card .button {
-  align-self: stretch;
-  background: var(--accent);
-  box-shadow: none;
+.outro-endings-name {
+  color: var(--text);
+}
+
+.outro-restart {
+  margin-top: clamp(20px, 3.5vh, 32px);
+}
+
+.outro-promote {
+  margin-top: 6px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--dim);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.outro-promote:hover {
+  color: var(--glow);
+}
+
+.outro-promote:focus-visible {
+  outline: 1px dashed var(--glow);
+  outline-offset: 4px;
+}
+
+.outro .credits {
+  margin-top: 20px;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+/* Телефон: итоги внизу, офис и карточка сверху */
+@media (max-width: 560px) {
+  .outro {
+    padding: 20px 16px 84px;
+    overflow-y: auto;
+  }
+
+  .outro.is-summary {
+    justify-content: flex-start;
+  }
+
+  .outro.is-summary .outro-body {
+    margin-top: auto;
+  }
+
+  .outro::before {
+    background: linear-gradient(0deg, rgba(3, 5, 8, 0.94) 0%, rgba(3, 5, 8, 0.8) 45%, rgba(3, 5, 8, 0) 70%);
+  }
+
+  .outro-story {
+    top: 20px;
+    right: 16px;
+    left: 16px;
+    width: auto;
+  }
+
+  /* С итогами карточка уступает место: экран маленький */
+  .outro.is-summary .outro-story {
+    display: none;
+  }
+
+  .outro-title {
+    font-size: 40px;
+  }
+}
+
+@media (max-height: 640px) {
+  .outro-title {
+    font-size: clamp(32px, 5vw, 56px);
+  }
+
+  .outro-log {
+    margin-top: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outro-story,
+  .outro-body {
+    animation: none;
+  }
 }
 
 @keyframes rise-in {
   from {
     opacity: 0;
     translate: 0 24px;
-  }
-}
-
-/* Низкий экран (ноутбук с открытой панелью закладок, телефон горизонтально) — карточка компактнее */
-@media (max-height: 640px) {
-  .outro-card {
-    gap: 10px;
-    padding: 16px 18px 18px;
-  }
-
-  .outro-title {
-    font-size: 22px;
-  }
-
-  .outro-lead {
-    gap: 6px;
-    font-size: 14px;
-  }
-
-  .outro-stat {
-    padding: 6px 10px;
-  }
-
-  .outro-stat-value {
-    font-size: 18px;
   }
 }

@@ -332,6 +332,7 @@ const lampHitbox = new THREE.Mesh(
 )
 lampHitbox.position.set(0, 2.65, 0)
 heroDesk.add(lampHitbox)
+const lampHold = { holding: false, progress: 0 } // 0 → 1, пока игрок держит лампу
 
 /**
  * Lights
@@ -405,7 +406,7 @@ const showFiringLabel = (desk, reason = pickRandom(firingReasons)) => {
     const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
     )
-    const height = 0.4
+    const height = 0.4 * getSpriteScale()
     sprite.scale.set(height * aspect, height, 1)
     sprite.position.copy(desk.position)
     sprite.position.y = 2.0
@@ -691,12 +692,36 @@ const SPAWN_RADIUS_MIN = 8
 const SPAWN_RADIUS_MAX = 11
 const DISMISS_DURATION = 0.25
 
-const nextFeedItem = () => newsFeed[news.feedIndex++ % newsFeed.length]
+/**
+ * Noise
+ * С Middle часть уведомлений — шум: рассылки, LinkedIn, #random. Они серые и полупрозрачные,
+ * чтобы их можно было отличить от важных с первого взгляда, не читая текст.
+ * Шум безвреден: долетел — ничего не случилось, кликнул — просто потратил время. Новых правил нет,
+ * игрок сам замечает, что серые можно не ловить, и учится выбирать, на что тратить клики
+ */
+const NOISE_ACCENT = '#6b7280'
+const NOISE_OPACITY = 0.7
+const NOISE_SCALE = 0.85
+
+const noiseFeed = [
+    { label: 'Email · All staff', text: 'RE: RE: RE: please remove me from this list' },
+    { label: 'LinkedIn', text: 'Hot take: sleep is a skill issue 🧵 1/47' },
+    { label: 'Slack · #random', text: 'Tabs or spaces? Wrong answers only 👇' },
+    { label: 'Newsletter', text: '10 AI tools you must try this week' },
+    { label: 'Slack · #social', text: 'Who took my oat milk from the fridge?' },
+    { label: 'Email · Facilities', text: 'Reminder: the 3rd floor printer is still broken' },
+].map((item) => ({ ...item, accent: NOISE_ACCENT, noise: true }))
+
+// Долю шума задаёт уровень (game.noiseChance). На Junior — 0, лента как была
+const nextFeedItem = () => {
+    if (Math.random() < game.noiseChance) return pickRandom(noiseFeed)
+    return newsFeed[news.feedIndex++ % newsFeed.length]
+}
 
 // Случайная точка на кольце вокруг героя, где-то в темноте
 const randomSpawnPoint = () => {
     const angle = Math.random() * Math.PI * 2
-    const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random())
+    const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random()) * getSpawnScale()
     return new THREE.Vector3(
         heroHead.x + Math.cos(angle) * radius,
         2.5 + Math.random() * 2.5,
@@ -709,17 +734,19 @@ const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
     const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
     )
-    const height = 0.45
+    const height = (item.noise ? 0.45 * NOISE_SCALE : 0.45) * getCardScale()
     sprite.scale.set(height * aspect, height, 1)
     sprite.position.copy(from)
     scene.add(sprite)
 
     // Длительность полёта зависит от расстояния: карточка, родившаяся рядом, долетает быстрее
-    const baseDuration = THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, getStoryProgress())
-    const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2
+    const baseDuration = THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, getNightDifficulty())
+    const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2 * getSpawnScale()
     const duration = Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
 
     flyingCards.push({
+        item,
+        maxOpacity: item.noise ? NOISE_OPACITY : 1,
         sprite,
         from,
         baseScale: sprite.scale.clone(),
@@ -742,6 +769,10 @@ const dismissCard = (card) => {
     const elapsedTime = clock.getElapsedTime()
     card.dismissedAt = elapsedTime
     sound.pop()
+
+    // Шум: закрылся, и всё. Ни очков, ни облегчения, ни новой карточки — только потраченное время
+    if (card.item.noise) return
+
     addDismissScore(card.sprite.position)
     if (experience.phase === 'running') {
         game.dismissed++
@@ -759,7 +790,7 @@ const dismissCard = (card) => {
 }
 
 const updateNews = (elapsedTime) => {
-    const progress = getStoryProgress()
+    const progress = getNightDifficulty()
 
     if (experience.phase === 'running' && !isTutorial() && !shift.over && elapsedTime >= news.nextSpawnAt) {
         spawnCard(nextFeedItem(), elapsedTime)
@@ -777,7 +808,7 @@ const updateNews = (elapsedTime) => {
                 continue
             }
             card.sprite.scale.copy(card.baseScale).multiplyScalar(1 + dismissT * 0.5)
-            card.sprite.material.opacity = 1 - dismissT
+            card.sprite.material.opacity = (1 - dismissT) * card.maxOpacity
             continue
         }
 
@@ -788,8 +819,15 @@ const updateNews = (elapsedTime) => {
 
         if (t >= 1) {
             removeCard(i)
-            onCardHit()
+            // Шум долетел — и ничего. Безвредно
+            if (!card.item.noise) onCardHit()
+            else showCallout('noise', 'Grey ones are noise — <strong>safe to ignore</strong>', heroHead)
             continue
+        }
+
+        // Первый шум за ночь, когда он уже на виду (на старте он ещё в темноте за краем экрана)
+        if (card.item.noise && t > CALLOUT_CARD_PROGRESS) {
+            showCallout('noise', 'Grey ones are noise — <strong>safe to ignore</strong>', card.sprite.position)
         }
 
         // t * t — медленно в начале, быстро в конце: карточка «набрасывается»
@@ -798,7 +836,7 @@ const updateNews = (elapsedTime) => {
         // Появляется в начале, тает и уменьшается у самой головы
         const fadeIn = Math.min(t / 0.1, 1)
         const fadeOut = Math.min((1 - t) / 0.15, 1)
-        card.sprite.material.opacity = Math.min(fadeIn, fadeOut)
+        card.sprite.material.opacity = Math.min(fadeIn, fadeOut) * card.maxOpacity
         card.sprite.scale.copy(card.baseScale).multiplyScalar(0.4 + 0.6 * fadeOut)
     }
 }
@@ -829,34 +867,37 @@ const drawJobScreen = () => {
         context.fillStyle = '#0d1117'
         context.fillRect(0, 0, width, height)
 
-        context.fillStyle = '#7d8590'
-        context.font = `600 24px ${font}`
+        context.fillStyle = '#84949c'
+        context.font = `500 22px ${font}`
         context.fillText('JOB APPLICATIONS', 28, 44)
 
-        context.fillStyle = '#f2f4f8'
-        context.font = `800 72px ${font}`
+        context.fillStyle = '#d4f1ff'
+        context.font = `400 72px ${font}`
         context.fillText(String(applications.sent), 28, 128)
-        context.fillStyle = '#7d8590'
-        context.font = `600 24px ${font}`
+        context.fillStyle = '#84949c'
+        context.font = `500 22px ${font}`
         context.fillText('sent', 32, 160)
 
         // Ноль интервью — красный. Первое приглашение (только на рассвете) — зелёное
         context.fillStyle = applications.interviews > 0 ? '#34d399' : '#ff6b6b'
-        context.font = `800 72px ${font}`
+        context.font = `400 72px ${font}`
         context.fillText(String(applications.interviews), 300, 128)
-        context.fillStyle = '#7d8590'
-        context.font = `600 24px ${font}`
+        context.fillStyle = '#84949c'
+        context.font = `500 22px ${font}`
         context.fillText('interviews', 302, 160)
 
-        context.fillStyle = '#c9d1d9'
-        context.font = `italic 500 22px ${font}`
-        const reply = applications.lastReply.length > 42
-            ? `${applications.lastReply.slice(0, 41)}…`
+        // Моноширинный шире Inter: режем фразу раньше, чтобы влезла в экран
+        context.fillStyle = '#c9d6dc'
+        context.font = `italic 400 20px ${font}`
+        const reply = applications.lastReply.length > 36
+            ? `${applications.lastReply.slice(0, 35)}…`
             : applications.lastReply
         context.fillText(`“${reply}”`, 28, 240)
     })
 }
 drawJobScreen()
+// Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
+document.fonts?.ready.then(drawJobScreen)
 
 const updateApplications = (elapsedTime) => {
     if (experience.phase !== 'running' || isTutorial() || elapsedTime < applications.nextAt) return
@@ -865,6 +906,8 @@ const updateApplications = (elapsedTime) => {
     applications.sent += 1 + Math.floor(Math.random() * 3)
     if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
     drawJobScreen()
+// Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
+document.fonts?.ready.then(drawJobScreen)
 }
 
 /**
@@ -876,6 +919,9 @@ const sizes = {
     pixelRatio: Math.min(window.devicePixelRatio, 2),
 }
 
+// Спрайты-подсказки пересчитывают размер при повороте экрана
+const spriteScaleUpdaters = []
+
 window.addEventListener('resize', () => {
     sizes.width = window.innerWidth
     sizes.height = window.innerHeight
@@ -884,6 +930,8 @@ window.addEventListener('resize', () => {
     camera.aspect = sizes.width / sizes.height
     camera.fov = getCameraFov()
     camera.updateProjectionMatrix()
+    if (experience.phase === 'intro' || experience.phase === 'running') applyCameraDistance()
+    for (const update of spriteScaleUpdaters) update()
 
     renderer.setSize(sizes.width, sizes.height)
     renderer.setPixelRatio(sizes.pixelRatio)
@@ -892,8 +940,16 @@ window.addEventListener('resize', () => {
 /**
  * Camera
  */
-// На вертикальном экране телефона в кадр влезает мало офиса — расширяем угол обзора
-const getCameraFov = () => (sizes.width < sizes.height ? 65 : 45)
+// На телефоне весь офис не нужен: важнее герой и то, что к нему летит.
+// Поэтому на вертикальном экране камера ближе, угол чуть шире, а надписи и карточки крупнее
+const isPortrait = () => sizes.width < sizes.height
+const getCameraFov = () => (isPortrait() ? 55 : 45)
+const CAMERA_DISTANCE_PORTRAIT = 12
+const getSpriteScale = () => (isPortrait() ? 1.3 : 1)
+// Карточкам — ещё крупнее: на них текст, и его надо успеть прочитать на лету
+const getCardScale = () => (isPortrait() ? 1.5 : 1)
+// Карточки на телефоне рождаются ближе к герою — иначе половину полёта они за краем узкого экрана
+const getSpawnScale = () => (isPortrait() ? 0.75 : 1)
 
 const camera = new THREE.PerspectiveCamera(getCameraFov(), sizes.width / sizes.height, 0.1, 100)
 camera.position.set(7, 7.5, 11)
@@ -905,6 +961,13 @@ controls.enableDamping = true
 controls.maxPolarAngle = Math.PI * 0.45 // не даём заглянуть под пол
 controls.minDistance = 3
 controls.maxDistance = 22
+
+const CAMERA_DISTANCE_DEFAULT = camera.position.distanceTo(controls.target)
+const applyCameraDistance = () => {
+    const distance = isPortrait() ? CAMERA_DISTANCE_PORTRAIT : CAMERA_DISTANCE_DEFAULT
+    camera.position.sub(controls.target).setLength(distance).add(controls.target)
+}
+applyCameraDistance()
 
 /**
  * Renderer
@@ -982,6 +1045,7 @@ const holdPointer = () => {
 
 const releasePointer = () => {
     game.working = false
+    lampHold.holding = false
     if (!isPointerBusy) return
     isPointerBusy = false
     if (experience.phase === 'running') controls.enabled = true
@@ -1006,8 +1070,12 @@ canvas.addEventListener('pointerdown', (event) => {
         return
     }
 
-    // Нажали на свою лампу — выключил свет и ушёл
-    if (isPointerOnLamp(event)) startEnding('loggedOff')
+    // Зажали свою лампу — свет медленно гаснет; додержал до конца — выключил и ушёл.
+    // Удержание, а не тап: на телефоне лампа рядом с монитором, и случайный тап раньше обрывал ночь
+    if (isPointerOnLamp(event)) {
+        lampHold.holding = true
+        holdPointer()
+    }
 })
 
 canvas.addEventListener('pointerup', releasePointer)
@@ -1076,6 +1144,9 @@ const experience = {
 const ui = {
     intro: document.querySelector('[data-intro]'),
     start: document.querySelector('[data-start]'),
+    starts: document.querySelectorAll('[data-start]'),
+    handbook: document.querySelector('[data-handbook]'),
+    handbookOpen: document.querySelector('[data-handbook-open]'),
     clockPanel: document.querySelector('[data-clock-panel]'),
     clock: document.querySelector('[data-clock]'),
     clockGoal: document.querySelector('[data-clock-goal]'),
@@ -1084,9 +1155,6 @@ const ui = {
     coachSkip: document.querySelector('[data-coach-skip]'),
     shiftOver: document.querySelector('[data-shift-over]'),
     goHome: document.querySelector('[data-go-home]'),
-    outroCard: document.querySelector('[data-outro-card]'),
-    outroTime: document.querySelector('[data-outro-time]'),
-    outroBest: document.querySelector('[data-outro-best]'),
     outroEndings: document.querySelector('[data-outro-endings]'),
     outro: document.querySelector('[data-outro]'),
     restart: document.querySelector('[data-restart]'),
@@ -1096,19 +1164,30 @@ const ui = {
     stress: document.querySelector('[data-meter="stress"]'),
     vignette: document.querySelector('[data-vignette]'),
     whiteout: document.querySelector('[data-whiteout]'),
-    outroEnding: document.querySelector('[data-outro-ending]'),
     outroTitle: document.querySelector('[data-outro-title]'),
-    outroMeta: document.querySelector('[data-outro-meta]'),
-    outroLead: document.querySelector('[data-outro-lead]'),
+    outroStory: document.querySelector('[data-outro-story]'),
+    outroStorySender: document.querySelector('[data-outro-story-sender]'),
+    outroStoryTime: document.querySelector('[data-outro-story-time]'),
+    outroStoryTitle: document.querySelector('[data-outro-story-title]'),
+    outroStoryMeta: document.querySelector('[data-outro-story-meta]'),
+    outroStoryText: document.querySelector('[data-outro-story-text]'),
+    outroBody: document.querySelector('[data-outro-body]'),
+    outroCause: document.querySelector('[data-outro-cause]'),
+    outroLine: document.querySelector('[data-outro-line]'),
+    outroTip: document.querySelector('[data-outro-tip]'),
+    outroLog: document.querySelector('[data-outro-log]'),
+    outroEndingName: document.querySelector('[data-outro-ending-name]'),
     outroSting: document.querySelector('[data-outro-sting]'),
     outroStingSender: document.querySelector('[data-outro-sting-sender]'),
     outroStingTime: document.querySelector('[data-outro-sting-time]'),
     outroStingText: document.querySelector('[data-outro-sting-text]'),
     outroFound: document.querySelector('[data-outro-found]'),
-    outroScore: document.querySelector('[data-outro-score]'),
     score: document.querySelector('[data-score]'),
     combo: document.querySelector('[data-combo]'),
     popups: document.querySelector('[data-popups]'),
+    levelButtons: document.querySelectorAll('[data-level]'),
+    levelDesc: document.querySelector('[data-level-desc]'),
+    promote: document.querySelector('[data-promote]'),
 }
 
 // На сенсорных экранах пишем «Tap» вместо «Click»
@@ -1120,14 +1199,18 @@ controls.autoRotate = true
 controls.autoRotateSpeed = 0.3
 
 const startShift = () => {
+    if (experience.phase !== 'intro') return
     experience.phase = 'running'
     sound.start()
     controls.autoRotate = false
+    restoreIntroLights()
 
+    if (ui.handbook.open) ui.handbook.close()
     ui.intro.classList.add('is-hidden')
     setTimeout(() => (ui.intro.hidden = true), 1200)
     ui.hud.hidden = false
     ui.clockPanel.hidden = false
+    ui.clockGoal.textContent = `${currentLevel.name} · night shift`
 
     if (shouldShowTutorial()) startTutorial()
     else beginShift()
@@ -1143,8 +1226,157 @@ const beginShift = () => {
     shift.duration = getShiftDuration()
 }
 
-ui.start.addEventListener('click', startShift)
-ui.restart.addEventListener('click', () => window.location.reload())
+/**
+ * Clock in
+ * Смену начинают удержанием — та же механика, что и работа за монитором, так что игрок учится ей до старта.
+ * Отпустил раньше времени — полоса сползает назад
+ */
+const HOLD_DURATION = 0.9
+const clockIn = { holding: false, progress: 0 }
+
+// Кнопок «clock in» две: на экране и внутри handbook. Держим ту, на которой палец
+let holdButton = null
+
+const beginHold = (button) => {
+    if (experience.phase !== 'intro') return
+    sound.start() // это жест пользователя — можно завести звук: гул нарастает, пока держишь
+    clockIn.holding = true
+    holdButton = button
+    button.classList.add('is-holding')
+}
+
+const endHold = () => {
+    clockIn.holding = false
+    holdButton?.classList.remove('is-holding')
+}
+
+for (const button of ui.starts) {
+    button.addEventListener('pointerdown', (event) => {
+        try {
+            button.setPointerCapture(event.pointerId) // палец может съехать с кнопки — удержание не прервётся
+        } catch {}
+        beginHold(button)
+    })
+    button.addEventListener('pointerup', endHold)
+    button.addEventListener('pointercancel', endHold)
+    button.addEventListener('lostpointercapture', endHold)
+    button.addEventListener('contextmenu', (event) => event.preventDefault()) // долгое нажатие на телефоне не открывает меню
+    // Клавиатура и скринридеры присылают click с detail === 0 — для них смена стартует сразу, без удержания
+    button.addEventListener('click', (event) => {
+        if (event.detail === 0) startShift()
+    })
+}
+
+/**
+ * Handbook — нативный <dialog>: фокус, Esc и top layer браузер даёт сам.
+ * Закрываем ещё кликом по затемнению (клик попадает в сам dialog, а не в .handbook-sheet)
+ */
+const closeHandbook = () => {
+    if (!ui.handbook.open) return
+    ui.handbook.classList.add('is-closing')
+    const finish = () => {
+        ui.handbook.classList.remove('is-closing')
+        ui.handbook.close()
+    }
+    if (prefersReducedMotion) finish()
+    else setTimeout(finish, 180)
+}
+
+ui.handbookOpen.addEventListener('click', () => {
+    ui.handbook.showModal()
+    ui.handbookOpen.setAttribute('aria-expanded', 'true')
+})
+ui.handbook.addEventListener('close', () => {
+    ui.handbookOpen.setAttribute('aria-expanded', 'false')
+    endHold()
+})
+ui.handbook.addEventListener('cancel', (event) => {
+    event.preventDefault() // Esc — тоже через анимацию закрытия
+    closeHandbook()
+})
+ui.handbook.addEventListener('click', (event) => {
+    if (event.target === ui.handbook) closeHandbook()
+})
+ui.handbook.querySelector('[data-handbook-close]').addEventListener('click', closeHandbook)
+
+const updateClockIn = (deltaTime) => {
+    if (experience.phase !== 'intro') return
+    const speed = clockIn.holding ? 1 / HOLD_DURATION : -2 / HOLD_DURATION
+    const progress = THREE.MathUtils.clamp(clockIn.progress + speed * deltaTime, 0, 1)
+    if (progress === clockIn.progress) return
+    clockIn.progress = progress
+    for (const button of ui.starts) button.style.setProperty('--hold', progress.toFixed(3))
+    if (progress === 1) {
+        endHold()
+        startShift()
+    }
+}
+
+// Первый клик где угодно на стартовом экране заводит гул офиса — дальше экран уже звучит
+window.addEventListener('pointerdown', () => {
+    if (experience.phase === 'intro') sound.start()
+})
+
+/**
+ * Intro lights
+ * Пока висит стартовый экран, лампы коллег гаснут по одной — подзаголовок сбывается у игрока на глазах.
+ * Когда почти все погасли, кто-то щёлкает рубильником, и всё начинается заново.
+ * Меняем только яркость (setDeskPower), а не state: смена стартует с полностью освещённым офисом
+ */
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+const introLights = { nextAt: 2.5, flickering: null, flickerStart: 0, dark: new Set(), relightAt: 0, minute: -1 }
+const introClock = document.querySelector('[data-intro-clock]')
+
+const restoreIntroLights = () => {
+    if (introLights.flickering) setDeskPower(introLights.flickering, 1)
+    for (const desk of introLights.dark) setDeskPower(desk, 1)
+    introLights.flickering = null
+    introLights.dark.clear()
+}
+
+const updateIntroLights = (elapsedTime) => {
+    if (experience.phase !== 'intro') return
+
+    // Часы в углу: 21:58, через минуту 21:59 — и замирают. В 22:00 начинается смена
+    const minute = Math.min(Math.floor(elapsedTime / 60), 1)
+    if (minute !== introLights.minute) {
+        introLights.minute = minute
+        introClock.innerHTML = `21<span class="blink">:</span>${58 + minute}`
+    }
+
+    if (introLights.relightAt) {
+        if (elapsedTime < introLights.relightAt) return
+        restoreIntroLights()
+        introLights.relightAt = 0
+        introLights.nextAt = elapsedTime + 4
+        sound.click()
+        return
+    }
+
+    const desk = introLights.flickering
+    if (desk) {
+        const t = elapsedTime - introLights.flickerStart
+        if (t >= FLICKER_DURATION) {
+            setDeskPower(desk, 0)
+            introLights.dark.add(desk)
+            introLights.flickering = null
+        } else if (!prefersReducedMotion) {
+            setDeskPower(desk, hashNoise(Math.floor(t * 12) + desk.id) > 0.45 ? 1 : 0.1)
+        }
+        return
+    }
+
+    if (elapsedTime < introLights.nextAt) return
+    const lit = colleagues.filter((candidate) => !introLights.dark.has(candidate))
+    if (lit.length <= 2) {
+        introLights.relightAt = elapsedTime + 6 // посидеть в темноте
+        return
+    }
+    introLights.flickering = pickRandom(lit)
+    introLights.flickerStart = elapsedTime
+    introLights.nextAt = elapsedTime + FLICKER_DURATION + 2.5 + Math.random() * 3
+    sound.buzz()
+}
 /**
  * Sound toggle
  * Выбор запоминаем в localStorage, чтобы после перезагрузки звук остался выключенным.
@@ -1210,6 +1442,20 @@ const getShiftDuration = () => {
 const getShiftFraction = (elapsedTime) =>
     THREE.MathUtils.clamp((elapsedTime - shift.start) / shift.duration, 0, 1)
 
+/**
+ * Сложность внутри ночи: 0 в 22:00 → 1 в 06:00. От неё зависят спад Performance, частота и скорость карточек.
+ * Раньше сложность считалась по числу уволенных, а увольнения к утру идут всё чаще — и последние 20% ночи
+ * сложность прыгала с 0.68 до 1: ровная ночь и стена в конце. Теперь она растёт по времени, почти линейно.
+ * Кривая > 1 — чуть мягче в начале, чтобы было время разогреться. Туман, мигание лампы и звук
+ * по-прежнему идут за увольнениями (getStoryProgress): это атмосфера, а не сложность
+ */
+const DIFFICULTY_CURVE = 1.2
+
+const getNightDifficulty = () => {
+    if (experience.phase !== 'running' || isTutorial()) return 0
+    return getShiftFraction(clock.getElapsedTime()) ** DIFFICULTY_CURVE
+}
+
 const formatShiftTime = (fraction) => {
     const minutes = shift.startHour * 60 + Math.floor(fraction * shift.hours * 60)
     const hh = String(Math.floor(minutes / 60) % 24).padStart(2, '0')
@@ -1220,6 +1466,7 @@ const formatShiftTime = (fraction) => {
 const endShift = () => {
     shift.over = true
     ui.clock.textContent = formatShiftTime(1)
+    ui.clockPanel.style.setProperty('--night', 1)
     ui.clockGoal.textContent = 'Shift over'
     ui.shiftOver.hidden = false
     game.working = false
@@ -1249,7 +1496,11 @@ const updateTension = (elapsedTime) => {
 
     // Во второй половине истории лампа героя начинает коротить
     let lampPower = 1
+    // На стартовом экране лампа героя изредка коротит — одна-две короткие просадки за полминуты
+    if (experience.phase === 'intro' && !prefersReducedMotion && hashNoise(Math.floor(elapsedTime * 10)) < 0.012) lampPower = 0.2
     if (tension > 0.5 && hashNoise(Math.floor(elapsedTime * 10)) < (tension - 0.5) * 0.4) lampPower = 0.25
+    // Пока держат лампу, свет плавно уходит — это и есть индикатор прогресса
+    lampPower *= 1 - lampHold.progress * 0.9
     heroLight.intensity = params.heroLightIntensity * lampPower
     setDeskPower(heroDesk, lampPower)
 
@@ -1287,6 +1538,7 @@ const game = {
     stressReliefPerDismiss: 2,
     stressDecay: 1.5, // сколько Stress в секунду уходит само
     respawnChance: 0.5, // шанс, что на месте закрытой карточки появится новая
+    noiseChance: 0, // доля безвредного шума среди уведомлений (с Middle, см. Noise и Levels)
 
     // Что игрок делал этой ночью — по этому выбираем концовку и пишем её текст
     dismissed: 0, // сколько уведомлений закрыл
@@ -1344,7 +1596,7 @@ const addDismissScore = (position) => {
  * Пульсирующая надпись над монитором героя: показывает, что монитор можно зажать.
  * Видна, пока игрок ни разу не поработал, и снова — когда Performance проседает
  */
-const holdHintTexture = createGlowLabelTexture('HOLD TO WORK', '#34d399')
+const holdHintTexture = createGlowLabelTexture('HOLD TO WORK', '#d4f1ff')
 const holdHint = new THREE.Sprite(
     new THREE.SpriteMaterial({
         map: holdHintTexture.texture,
@@ -1355,7 +1607,9 @@ const holdHint = new THREE.Sprite(
     })
 )
 holdHint.renderOrder = 10
-holdHint.scale.set(0.24 * holdHintTexture.aspect, 0.24, 1)
+const updateHoldHintScale = () => holdHint.scale.set(0.24 * getSpriteScale() * holdHintTexture.aspect, 0.24 * getSpriteScale(), 1)
+updateHoldHintScale()
+spriteScaleUpdaters.push(updateHoldHintScale)
 const holdHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 1.62, -0.22))
 holdHint.position.copy(holdHintBase)
 scene.add(holdHint)
@@ -1433,13 +1687,14 @@ const updateGame = (elapsedTime, deltaTime) => {
     if (!isTutorial()) {
         const shiftFraction = getShiftFraction(elapsedTime)
         ui.clock.textContent = formatShiftTime(shiftFraction)
+        ui.clockPanel.style.setProperty('--night', shiftFraction) // полоска ночи под часами
         if (shiftFraction >= 1) {
             endShift()
             return
         }
     }
 
-    const decay = isTutorial() ? 0 : THREE.MathUtils.lerp(game.performanceDecayStart, game.performanceDecayEnd, getStoryProgress())
+    const decay = isTutorial() ? 0 : THREE.MathUtils.lerp(game.performanceDecayStart, game.performanceDecayEnd, getNightDifficulty())
     const work = game.working ? game.workRate : 0
     if (game.working) {
         game.hasWorked = true
@@ -1588,6 +1843,10 @@ const updateTutorial = (elapsedTime) => {
     const anchor = tutorial.step === 'work'
         ? workHitbox.getWorldPosition(tutorialAnchor)
         : tutorial.step === 'dismiss' ? tutorial.card.sprite.position : heroHead
+    placeCoach(anchor)
+}
+
+const placeCoach = (anchor) => {
     const { x, y } = projectToScreen(anchor)
     ui.coach.style.transform = `translate(${x}px, ${y}px)`
 
@@ -1596,6 +1855,41 @@ const updateTutorial = (elapsedTime) => {
     const margin = 16
     const shift = THREE.MathUtils.clamp(x, margin + halfWidth, sizes.width - margin - halfWidth) - x
     ui.coach.style.setProperty('--shift', `${shift}px`)
+}
+
+/**
+ * Callouts
+ * Тот же пузырь, что в обучении, но разовый: когда за ночь впервые встречается что-то новое
+ * (сейчас — серый шум), над ним на несколько секунд всплывает пояснение. Новое правило он не вводит,
+ * просто снимает вопрос «а это что?»
+ */
+const CALLOUT_DURATION = 4
+const CALLOUT_CARD_PROGRESS = 0.35 // показываем, когда карточка пролетела треть пути и уже на виду
+
+const callout = {
+    shown: new Set(),
+    anchor: null, // точка в сцене, над которой висит пузырь. Живая ссылка — пузырь едет за карточкой
+    until: 0,
+}
+
+const showCallout = (kind, html, anchor) => {
+    // Обучение важнее, и две подсказки разом не показываем
+    if (callout.shown.has(kind) || tutorial.step !== null || callout.anchor) return
+    callout.shown.add(kind)
+    callout.anchor = anchor
+    callout.until = clock.getElapsedTime() + CALLOUT_DURATION
+    ui.coach.hidden = false
+    setCoach(html, false)
+}
+
+const updateCallout = (elapsedTime) => {
+    if (!callout.anchor) return
+    if (experience.phase !== 'running' || shift.over || elapsedTime > callout.until) {
+        callout.anchor = null
+        ui.coach.hidden = true
+        return
+    }
+    placeCoach(callout.anchor)
 }
 
 /**
@@ -1615,16 +1909,35 @@ const isFrozen = (elapsedTime) =>
 const LOG_OFF_FROM = 0.5
 const canLogOff = () => experience.phase === 'running' && !shift.over && getStoryProgress() >= LOG_OFF_FROM
 
+const LAMP_HOLD_DURATION = 1.2
+const updateLampHold = (deltaTime) => {
+    if (!canLogOff()) {
+        lampHold.holding = false
+        lampHold.progress = 0
+        return
+    }
+    // Отпустил раньше — свет быстро возвращается
+    const speed = lampHold.holding ? 1 / LAMP_HOLD_DURATION : -3 / LAMP_HOLD_DURATION
+    lampHold.progress = THREE.MathUtils.clamp(lampHold.progress + speed * deltaTime, 0, 1)
+    if (lampHold.progress === 1) {
+        lampHold.holding = false
+        startEnding('loggedOff')
+    }
+}
+
 /**
  * Lamp hint
  * Тусклая надпись у лампы героя — тихий намёк, что можно просто уйти
  */
-const lampHintTexture = createGlowLabelTexture('switch it off?', '#ffd9a0')
+// Подсказка честно говорит, что будет: ночь закончится. Но не запрещает — это тайная концовка
+const lampHintTexture = createGlowLabelTexture('hold to switch off · go home', '#ffd9a0')
 const lampHint = new THREE.Sprite(
     // fog: false — иначе туман съедает надпись почти целиком
     new THREE.SpriteMaterial({ map: lampHintTexture.texture, transparent: true, depthWrite: false, fog: false, opacity: 0 })
 )
-lampHint.scale.set(0.22 * lampHintTexture.aspect, 0.22, 1)
+const updateLampHintScale = () => lampHint.scale.set(0.24 * getSpriteScale() * lampHintTexture.aspect, 0.24 * getSpriteScale(), 1)
+updateLampHintScale()
+spriteScaleUpdaters.push(updateLampHintScale)
 const lampHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 3.05, 0))
 lampHint.position.copy(lampHintBase)
 scene.add(lampHint)
@@ -1638,8 +1951,11 @@ const updateLampHint = (elapsedTime) => {
 
 /**
  * Endings
- * Каждая концовка — последнее уведомление героя: отправитель, заголовок, текст.
- * В текст подставляются цифры именно этой ночи (stats), поэтому lead — функция
+ * Финал идёт в два такта:
+ *   story   — последнее уведомление героя, прилетает в сцену как игровая карточка (шутка внутри мира)
+ *   summary — итоги терминалом, как интро: что случилось (title), почему (cause), реплика (line),
+ *             подсказка на следующую ночь (tip) и лог смены
+ * Голос итогов — на «ты», как в интро и handbook. Цифры именно этой ночи берём из stats
  *
  * calm      — дожил до 06:00 и ушёл домой: призраки уходят с рассветом, на втором мониторе — первое приглашение
  * fired     — Performance = 0, но он всю ночь закрывал уведомления: увольнение «за отзывчивость»
@@ -1653,14 +1969,16 @@ const endings = {
         name: 'Made it to morning',
         accent: '#ff8a3d',
         duration: 8,
-        sender: 'Sunrise',
-        time: () => '06:00',
-        title: 'The ghosts left at dawn.',
-        lead: (stats) => [
-            'That’s the rule: they can’t stay in daylight. He can. Barely.',
-            `On the second screen, after ${stats.applications} applications: “Are you free Tuesday?”`,
-        ],
-        // Через пару секунд после финала — ещё одно уведомление. Ночь пережита, но ничего не закончилось
+        title: () => 'Made it<br />to 06:00',
+        cause: () => 'You survived the night shift.',
+        line: () => 'The ghosts left at dawn. They can’t stay in daylight. You can. Barely.',
+        story: (stats) => ({
+            sender: 'Email · Recruiter',
+            time: '06:00',
+            title: 'Are you free Tuesday?',
+            meta: `reply to application #${stats.applications}`,
+        }),
+        // Уже после итогов — ещё одно уведомление. Ночь пережита, но ничего не закончилось
         sting: { sender: 'Slack · Manager', time: '06:01', text: 'Morning! Quick sync? 🙂' },
     },
     fired: {
@@ -1668,50 +1986,67 @@ const endings = {
         name: 'Very responsive',
         accent: '#ff5a5a',
         duration: 7,
-        sender: 'Calendar · HR',
-        title: 'Quick sync? 🙂',
-        meta: '15 min · no agenda · camera on',
-        lead: (stats) => [
-            `He answered ${stats.dismissed} notifications tonight.${stats.missed === 0 ? ' Every single one.' : ''} Nobody answered his.`,
-            'Please bring your badge. You won’t need it after.',
-        ],
+        title: (stats) => `Fired<br />at ${stats.time}`,
+        cause: () => 'Performance hit zero.',
+        line: (stats) =>
+            stats.dismissed === 0
+                ? 'You didn’t answer a single notification. Nobody answered yours either.'
+                : `You answered ${stats.dismissed} notifications tonight.${stats.missed === 0 ? ' Every single one.' : ''} Nobody answered yours.`,
+        tip: 'Performance only grows while you hold your monitor. Notifications can wait a little.',
+        story: () => ({
+            sender: 'Calendar · HR',
+            title: 'Quick sync? 🙂',
+            meta: '15 min · no agenda · camera on',
+            text: 'Please bring your badge.',
+        }),
     },
     frozen: {
         icon: '🧊',
         name: 'Frozen',
         accent: '#7dd3fc',
         duration: 7,
-        sender: 'Slack · Manager',
-        time: (stats) => `seen ${stats.frozenSince}`,
-        title: 'are you still there?',
-        lead: (stats) => [
-            `He hadn’t moved since ${stats.frozenSince}. The ghosts drifted past his desk and didn’t look twice. They thought he was one of them.`,
-            'His status still says 🟢 Active.',
-        ],
+        title: (stats) => `Frozen<br />at ${stats.frozenSince}`,
+        cause: (stats) => `Performance hit zero. You stopped working at ${stats.frozenSince}.`,
+        line: () => 'The ghosts drifted past your desk and didn’t look twice. They thought you were one of them.',
+        tip: 'Hold your monitor to work. Sitting still drains performance.',
+        story: (stats) => ({
+            sender: 'Slack · Manager',
+            time: `seen ${stats.frozenSince}`,
+            title: 'are you still there?',
+            text: 'Your status still says 🟢 Active.',
+        }),
     },
     burnout: {
         icon: '🔥',
         name: 'Out of office',
         accent: '#9fb4d9',
         duration: 7,
-        sender: 'Automatic reply',
-        title: 'I’m out of office.',
-        lead: () => [
-            'I don’t know when I’ll be back.',
-            'For anything urgent, please contact my replacement. It has already read your message.',
-        ],
+        title: (stats) => `Burnt out<br />at ${stats.time}`,
+        cause: () => 'Stress hit 100.',
+        line: (stats) =>
+            stats.missed > 0
+                ? `${stats.missed} notifications got through. Each one landed on you.`
+                : 'Nothing got through. It still landed on you.',
+        tip: 'Click notifications before they reach your desk. Every one that hits adds stress.',
+        story: () => ({
+            sender: 'Automatic reply',
+            title: 'I’m out of office.',
+            text: 'For anything urgent, contact my replacement. It has already read your message.',
+        }),
     },
     loggedOff: {
         icon: '🚪',
         name: 'Logged off',
         accent: '#ffd9a0',
         duration: 9,
-        sender: 'Status · Offline',
-        title: 'He switched off his own lamp.',
-        lead: (stats) => [
-            'Every other light in this office was switched off by someone else.',
-            `${stats.unread} unread. They’ll keep.`,
-        ],
+        title: (stats) => `Logged off<br />at ${stats.time}`,
+        cause: () => 'You switched off your own lamp.',
+        line: () => 'Every other light in this office was switched off by someone else.',
+        story: (stats) => ({
+            sender: 'Slack',
+            title: '🔴 Offline',
+            text: `${stats.unread} unread. They’ll keep.`,
+        }),
         scoreCounts: false, // счёт этой ночи не считается — и это нормально
     },
 }
@@ -1719,9 +2054,14 @@ const endings = {
 const ENDINGS_STORAGE_KEY = 'nightmare-office:endings'
 const BEST_SCORE_STORAGE_KEY = 'nightmare-office:best'
 
+// Рекорд у каждого уровня свой: очки на Junior и на Lead не сравнить.
+// У Junior старый ключ — чтобы рекорды, поставленные до появления уровней, не потерялись
+const getBestScoreKey = () =>
+    currentLevelKey === 'junior' ? BEST_SCORE_STORAGE_KEY : `${BEST_SCORE_STORAGE_KEY}:${currentLevelKey}`
+
 const getBestScore = () => {
     try {
-        return Number(localStorage.getItem(BEST_SCORE_STORAGE_KEY)) || 0
+        return Number(localStorage.getItem(getBestScoreKey())) || 0
     } catch {
         return 0
     }
@@ -1731,7 +2071,7 @@ const getBestScore = () => {
 const saveBestScore = (score) => {
     const previousBest = getBestScore()
     try {
-        if (score > previousBest) localStorage.setItem(BEST_SCORE_STORAGE_KEY, String(score))
+        if (score > previousBest) localStorage.setItem(getBestScoreKey(), String(score))
     } catch {}
     return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
 }
@@ -1774,6 +2114,13 @@ const startEnding = (kind) => {
     experience.phase = 'ending'
     experience.ending = kind
     experience.endingStart = elapsedTime
+    experience.endingIsNew = (() => {
+        try {
+            return !JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]').includes(kind)
+        } catch {
+            return false
+        }
+    })()
     experience.endingsFound = saveEnding(kind)
     experience.endingTime = shiftTime(elapsedTime)
     experience.endingStats = {
@@ -1820,6 +2167,8 @@ const startEnding = (kind) => {
         applications.interviews = 1
         applications.lastReply = 'Are you free Tuesday?'
         drawJobScreen()
+// Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
+document.fonts?.ready.then(drawJobScreen)
         sound.calm()
     } else if (kind === 'fired') {
         showFiringLabel(heroDesk, 'LOW PERFORMANCE')
@@ -1847,56 +2196,159 @@ const startEnding = (kind) => {
 }
 
 let stingTimeout = null
+let summaryTimeout = null
+const STORY_BEAT = 2600 // сколько сюжетная карточка висит одна, прежде чем появятся итоги
+
+const setText = (element, text) => {
+    element.textContent = text ?? ''
+    element.hidden = !text
+}
 
 const showOutro = (kind) => {
     const ending = endings[kind]
     const stats = experience.endingStats
-    ui.outroCard.style.setProperty('--accent', ending.accent)
-    ui.outroEnding.textContent = ending.sender
-    ui.outroTime.textContent = ending.time ? ending.time(stats) : stats.time
-    ui.outroTitle.textContent = ending.title
-    ui.outroMeta.textContent = ending.meta ?? ''
-    ui.outroMeta.hidden = !ending.meta
-    ui.outroLead.replaceChildren(...ending.lead(stats).map((text) => {
-        const paragraph = document.createElement('p')
-        paragraph.textContent = text
-        return paragraph
-    }))
+
+    // Такт 1: последнее уведомление — в сцене
+    const story = ending.story(stats)
+    ui.outro.style.setProperty('--accent', ending.accent)
+    ui.outroStorySender.textContent = story.sender
+    ui.outroStoryTime.textContent = story.time ?? stats.time
+    ui.outroStoryTitle.textContent = story.title
+    setText(ui.outroStoryMeta, story.meta)
+    setText(ui.outroStoryText, story.text)
+
+    // Такт 2: итоги
+    ui.outroTitle.innerHTML = ending.title(stats)
+    ui.outroCause.textContent = ending.cause(stats)
+    ui.outroLine.textContent = ending.line(stats)
+    setText(ui.outroTip, ending.tip ? `next night: ${ending.tip}` : '')
 
     // В концовке Logged off счёт не считается: рекорд не обновляем, а вместо цифры — честная надпись
     const scoreCounts = ending.scoreCounts !== false
     const score = Math.floor(game.score)
     const { best, isNewBest } = scoreCounts ? saveBestScore(score) : { best: getBestScore(), isNewBest: false }
-    ui.outroScore.textContent = scoreCounts ? score : 'didn’t count'
-    ui.outroBest.innerHTML = isNewBest ? `${best}<span class="new-best">New best!</span>` : String(best)
+    const rows = [
+        ['role', currentLevel.name],
+        ['answered', stats.dismissed],
+        ['missed', stats.missed],
+        ...(kind === 'calm' ? [['applications', stats.applications]] : []),
+        ['score', scoreCounts ? score : 'didn’t count', isNewBest ? 'new best' : null],
+        ['best', best],
+    ]
+    ui.outroLog.replaceChildren(...rows.flatMap(([label, value, flag]) => {
+        const term = document.createElement('dt')
+        term.textContent = label
+        const detail = document.createElement('dd')
+        detail.textContent = value
+        if (flag) {
+            const mark = document.createElement('span')
+            mark.className = 'outro-flag'
+            mark.textContent = flag
+            detail.append(mark)
+        }
+        return [term, detail]
+    }))
 
-    // Все концовки: найденные — с иконкой и названием, ненайденные — «???»
+    // Дожил до утра — уровень пройден, и можно попробовать следующий
+    const nextLevel = LEVEL_ORDER[LEVEL_ORDER.indexOf(currentLevelKey) + 1]
+    if (kind === 'calm') markLevelPassed(currentLevelKey)
+    if (kind === 'calm' && nextLevel) {
+        ui.promote.dataset.next = nextLevel
+        ui.promote.textContent = `or get promoted → ${levels[nextLevel].name}`
+        ui.promote.hidden = false
+    }
+
+    // Все концовки — слоты: найденные с иконкой, ненайденные пустые. Текущая подсвечена и подписана
     const kinds = Object.keys(endings)
     ui.outroFound.textContent = `${experience.endingsFound.size}/${kinds.length}`
     ui.outroEndings.replaceChildren(...kinds.map((key) => {
-        const item = document.createElement('li')
+        const slot = document.createElement('span')
         const isFound = experience.endingsFound.has(key)
-        item.className = 'outro-ending'
-        item.classList.toggle('is-locked', !isFound)
-        item.classList.toggle('is-current', key === kind)
-        item.textContent = isFound ? `${endings[key].icon} ${endings[key].name}` : '??? '
-        return item
+        slot.className = 'outro-ending'
+        slot.classList.toggle('is-locked', !isFound)
+        slot.classList.toggle('is-current', key === kind)
+        slot.textContent = isFound ? endings[key].icon : ''
+        slot.title = isFound ? endings[key].name : 'not found yet'
+        slot.setAttribute('aria-label', slot.title)
+        return slot
     }))
+    ui.outroEndingName.textContent = `${experience.endingIsNew ? 'new: ' : ''}${ending.name}`
 
     ui.outro.hidden = false
+    ui.outroBody.hidden = true
+    sound.ping()
 
-    // Последнее уведомление приходит, когда кажется, что всё уже закончилось
-    if (ending.sting) {
-        clearTimeout(stingTimeout)
-        stingTimeout = setTimeout(() => {
-            ui.outroStingSender.textContent = ending.sting.sender
-            ui.outroStingTime.textContent = ending.sting.time
-            ui.outroStingText.textContent = ending.sting.text
-            ui.outroSting.hidden = false
-            sound.ping()
-        }, 2500)
+    const showSummary = () => {
+        clearTimeout(summaryTimeout)
+        if (!ui.outroBody.hidden) return
+        ui.outro.classList.add('is-summary')
+        ui.outroBody.hidden = false
+        ui.restart.focus({ preventScroll: true })
+
+        // Последнее уведомление приходит, когда кажется, что всё уже закончилось
+        if (ending.sting) {
+            clearTimeout(stingTimeout)
+            stingTimeout = setTimeout(() => {
+                ui.outroStingSender.textContent = ending.sting.sender
+                ui.outroStingTime.textContent = ending.sting.time
+                ui.outroStingText.textContent = ending.sting.text
+                ui.outroSting.hidden = false
+                sound.ping()
+            }, 2500)
+        }
     }
+    summaryTimeout = setTimeout(showSummary, prefersReducedMotion ? 0 : STORY_BEAT)
+    // Нетерпеливым — клик или клавиша сразу показывают итоги
+    ui.outro.addEventListener('pointerdown', showSummary, { once: true })
+    window.addEventListener('keydown', showSummary, { once: true })
 }
+
+/**
+ * Restart — «hold to clock in again»: то же удержание, что и в интро.
+ * Свой маленький цикл на requestAnimationFrame: игровой tick к этому моменту уже ничего не ждёт
+ */
+const restartHold = { holding: false, progress: 0, last: 0, frame: 0 }
+
+const stepRestartHold = (now) => {
+    const deltaTime = Math.min((now - restartHold.last) / 1000, 0.1)
+    restartHold.last = now
+    const speed = restartHold.holding ? 1 / HOLD_DURATION : -2 / HOLD_DURATION
+    restartHold.progress = THREE.MathUtils.clamp(restartHold.progress + speed * deltaTime, 0, 1)
+    ui.restart.style.setProperty('--hold', restartHold.progress.toFixed(3))
+    if (restartHold.progress === 1) {
+        window.location.reload()
+        return
+    }
+    if (restartHold.holding || restartHold.progress > 0) restartHold.frame = requestAnimationFrame(stepRestartHold)
+}
+
+const beginRestartHold = () => {
+    restartHold.holding = true
+    ui.restart.classList.add('is-holding')
+    cancelAnimationFrame(restartHold.frame)
+    restartHold.last = performance.now()
+    restartHold.frame = requestAnimationFrame(stepRestartHold)
+}
+
+const endRestartHold = () => {
+    restartHold.holding = false
+    ui.restart.classList.remove('is-holding')
+}
+
+ui.restart.addEventListener('pointerdown', (event) => {
+    try {
+        ui.restart.setPointerCapture(event.pointerId)
+    } catch {}
+    beginRestartHold()
+})
+ui.restart.addEventListener('pointerup', endRestartHold)
+ui.restart.addEventListener('pointercancel', endRestartHold)
+ui.restart.addEventListener('lostpointercapture', endRestartHold)
+ui.restart.addEventListener('contextmenu', (event) => event.preventDefault())
+// Клавиатура и скринридеры — без удержания
+ui.restart.addEventListener('click', (event) => {
+    if (event.detail === 0) window.location.reload()
+})
 
 const updateCalmEnding = (t, eased) => {
     const screensOff = Math.min(t * 4, 1) // экраны гаснут в первые 2 секунды
@@ -2023,11 +2475,166 @@ const updateEnding = (elapsedTime) => {
 }
 
 /**
+ * Levels
+ * Правила на всех уровнях одни и те же: держи монитор, закрывай уведомления.
+ * Уровни меняют только темп: как быстро падает Performance, как часто и как быстро летят карточки,
+ * сколько стоит пропущенная — и сколько среди них безвредного шума, который отвлекает.
+ *
+ * Уровни — ровная лестница: задаём только самый лёгкий (Junior, исходные цифры игры) и самый трудный (Lead),
+ * а каждый уровень берёт параметры между ними по своему tier: 0, 1/3, 2/3, 1.
+ * Так шаг сложности между соседними уровнями всегда одинаковый, и крутить нужно только два набора цифр.
+ * Подбирать удобно в #debug → Game / News, потом переносить сюда
+ */
+const LEVEL_EASIEST = {
+    game: {
+        performanceDecayStart: 2,
+        performanceDecayEnd: 6,
+        stressPerHit: 8,
+        stressDecay: 1.5,
+        respawnChance: 0.5,
+        noiseChance: 0,
+    },
+    news: { spawnIntervalStart: 3.5, spawnIntervalEnd: 0.9, flightDurationStart: 9, flightDurationEnd: 3.5 },
+}
+
+const LEVEL_HARDEST = {
+    game: {
+        performanceDecayStart: 4,
+        performanceDecayEnd: 10,
+        stressPerHit: 14,
+        stressDecay: 0.8, // стресс уходит медленнее — пропущенные карточки копятся, и вторая шкала тоже давит
+        respawnChance: 0.65,
+        noiseChance: 0.3,
+    },
+    news: { spawnIntervalStart: 2, spawnIntervalEnd: 0.5, flightDurationStart: 6.5, flightDurationEnd: 2.5 },
+}
+
+const levels = {
+    junior: { tier: 0, name: 'Junior', description: 'The night shift as it is. Hold the monitor, clear notifications.' },
+    middle: { tier: 1 / 3, name: 'Middle', description: 'More notifications, and faster. Some are just noise.' },
+    senior: { tier: 2 / 3, name: 'Senior', description: 'Everything at once. Your work slips away faster.' },
+    lead: { tier: 1, name: 'Lead', description: 'No one is coming to help. Good luck.' },
+}
+
+// Параметры уровня: каждое число — между Junior и Lead, по tier уровня
+const getLevelParams = (group, tier) => Object.fromEntries(
+    Object.keys(LEVEL_EASIEST[group]).map((key) => [
+        key,
+        THREE.MathUtils.lerp(LEVEL_EASIEST[group][key], LEVEL_HARDEST[group][key], tier),
+    ])
+)
+
+const LEVEL_ORDER = Object.keys(levels)
+const LEVEL_STORAGE_KEY = 'nightmare-office:level'
+const PASSED_STORAGE_KEY = 'nightmare-office:passed'
+
+let currentLevelKey = 'junior'
+let currentLevel = levels.junior
+
+// Какие уровни уже пройдены до утра — на стартовом экране у них галочка
+const getPassedLevels = () => {
+    try {
+        return new Set(JSON.parse(localStorage.getItem(PASSED_STORAGE_KEY) || '[]'))
+    } catch {
+        return new Set()
+    }
+}
+
+const markLevelPassed = (key) => {
+    try {
+        const passed = getPassedLevels()
+        passed.add(key)
+        localStorage.setItem(PASSED_STORAGE_KEY, JSON.stringify([...passed]))
+    } catch {}
+}
+
+const saveLevel = (key) => {
+    try {
+        localStorage.setItem(LEVEL_STORAGE_KEY, key)
+    } catch {}
+}
+
+const applyLevel = (key) => {
+    currentLevelKey = levels[key] ? key : 'junior'
+    currentLevel = levels[currentLevelKey]
+
+    Object.assign(game, getLevelParams('game', currentLevel.tier))
+    Object.assign(news, getLevelParams('news', currentLevel.tier))
+
+    const passed = getPassedLevels()
+    for (const button of ui.levelButtons) {
+        button.setAttribute('aria-checked', String(button.dataset.level === currentLevelKey))
+        button.classList.toggle('is-passed', passed.has(button.dataset.level))
+    }
+    ui.levelDesc.textContent = currentLevel.description
+
+    for (const controller of gui.controllersRecursive()) controller.updateDisplay()
+}
+
+for (const button of ui.levelButtons) {
+    button.addEventListener('click', () => {
+        if (experience.phase !== 'intro') return
+        applyLevel(button.dataset.level)
+        saveLevel(currentLevelKey)
+    })
+}
+
+// Стрелки влево/вправо переключают уровень, как в обычной группе радиокнопок
+ui.levelButtons[0]?.parentElement.addEventListener('keydown', (event) => {
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+    event.preventDefault()
+    const step = event.key === 'ArrowRight' ? 1 : -1
+    const index = (LEVEL_ORDER.indexOf(currentLevelKey) + step + LEVEL_ORDER.length) % LEVEL_ORDER.length
+    applyLevel(LEVEL_ORDER[index])
+    saveLevel(currentLevelKey)
+    document.querySelector(`[data-level="${currentLevelKey}"]`).focus()
+})
+
+ui.promote.addEventListener('click', () => {
+    saveLevel(ui.promote.dataset.next)
+    window.location.reload()
+})
+
+try {
+    applyLevel(localStorage.getItem(LEVEL_STORAGE_KEY))
+} catch {
+    applyLevel('junior')
+}
+
+gui.addFolder('Level').add({ level: currentLevelKey }, 'level', LEVEL_ORDER).onChange((key) => {
+    applyLevel(key)
+    saveLevel(key)
+})
+gameFolder.add(game, 'noiseChance').min(0).max(1).step(0.01).name('noise share')
+
+// Концовки по кнопке — чтобы не доигрывать смену ради каждой (работает, когда смена уже идёт)
+const endingsFolder = gui.addFolder('Endings').close()
+for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => startEnding(kind) }, kind)
+
+/**
  * Animate
  */
 const clock = new THREE.Clock()
 
 let previousTime = 0
+
+// На телефоне текст интро занимает нижнюю половину экрана — сдвигаем кадр, чтобы офис оказался сверху.
+// После старта плавно возвращаем сцену в центр
+const INTRO_PORTRAIT_SHIFT = 0.2 // доля высоты экрана
+let introFraming = 1
+// В финале наоборот: текст итогов слева (на телефоне — снизу), так что герой уезжает вправо (или вверх)
+const OUTRO_LANDSCAPE_SHIFT = 0.18 // доля ширины экрана
+let outroFraming = 0
+const updateIntroFraming = (deltaTime) => {
+    if (experience.phase !== 'intro') introFraming = Math.max(0, introFraming - deltaTime / 1.2)
+    if (experience.phase === 'ending' || experience.phase === 'done') outroFraming = Math.min(1, outroFraming + deltaTime / 2.5)
+    const smooth = (x) => x * x * (3 - 2 * x)
+    const portrait = sizes.width < sizes.height
+    const shiftY = portrait ? INTRO_PORTRAIT_SHIFT * Math.max(smooth(introFraming), smooth(outroFraming)) : 0
+    const shiftX = portrait ? 0 : -OUTRO_LANDSCAPE_SHIFT * smooth(outroFraming)
+    if (shiftX || shiftY) camera.setViewOffset(sizes.width, sizes.height, sizes.width * shiftX, sizes.height * shiftY, sizes.width, sizes.height)
+    else if (camera.view && camera.view.enabled) camera.clearViewOffset()
+}
 
 const tick = () => {
     const elapsedTime = clock.getElapsedTime()
@@ -2035,17 +2642,22 @@ const tick = () => {
     previousTime = elapsedTime
 
     updateStory(elapsedTime)
+    updateIntroLights(elapsedTime)
+    updateClockIn(deltaTime)
     updateColleagues(elapsedTime)
     updateFiringLabels(elapsedTime)
     updateGhosts(elapsedTime)
     updateNews(elapsedTime)
     updateApplications(elapsedTime)
+    updateLampHold(deltaTime)
     updateTension(elapsedTime)
     updateGame(elapsedTime, deltaTime) // после updateTension: поверх его цвета экрана рисуем «работу»
     updateTutorial(elapsedTime)
+    updateCallout(elapsedTime)
     updateHoldHint(elapsedTime)
     updateLampHint(elapsedTime)
     updateEnding(elapsedTime)
+    updateIntroFraming(deltaTime)
 
     controls.update()
 
