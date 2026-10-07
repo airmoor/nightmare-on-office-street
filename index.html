@@ -66,6 +66,13 @@
       </ul>
     </div>
 
+    <!-- Обучение при первом запуске: подсказка висит над тем, что нужно сделать -->
+    <div class="coach" data-coach hidden>
+      <span class="coach-ring"></span>
+      <p class="coach-bubble" data-coach-text></p>
+    </div>
+    <button class="coach-skip" data-coach-skip hidden>Skip tutorial</button>
+
     <!-- Сюда JS добавляет всплывающие «+20» -->
     <div class="popups" data-popups></div>
 
@@ -92,7 +99,8 @@
           <span class="outro-time" data-outro-time></span>
         </header>
         <h2 class="outro-title" data-outro-title></h2>
-        <p class="outro-lead" data-outro-lead></p>
+        <p class="outro-meta" data-outro-meta hidden></p>
+        <div class="outro-lead" data-outro-lead></div>
         <div class="outro-stats">
           <div class="outro-stat">
             <span class="outro-stat-label">Score</span>
@@ -111,6 +119,15 @@
       </article>
       <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
     </section>
+
+    <!-- Ещё одно уведомление уже после финала — выезжает сверху, как пуш на телефоне -->
+    <aside class="outro-sting" data-outro-sting hidden>
+      <header class="outro-sting-header">
+        <span data-outro-sting-sender></span>
+        <span data-outro-sting-time></span>
+      </header>
+      <p class="outro-sting-text" data-outro-sting-text></p>
+    </aside>
 
     <!-- Кнопка звука видна всегда, даже на стартовом экране. Клавиша M делает то же самое -->
     <button class="mute" data-mute aria-pressed="false" title="Toggle sound (M)">

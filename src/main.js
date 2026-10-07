@@ -628,7 +628,7 @@ const story = {
 const getStoryProgress = () => story.firedCount / colleagues.length
 
 const updateStory = (elapsedTime) => {
-    if (experience.phase !== 'running' || !story.autoplay || elapsedTime < story.nextFireAt) return
+    if (experience.phase !== 'running' || isTutorial() || !story.autoplay || elapsedTime < story.nextFireAt) return
 
     if (fireRandomColleague()) story.firedCount++
 
@@ -749,7 +749,8 @@ const dismissCard = (card) => {
     }
     game.stress = Math.max(0, game.stress - game.stressReliefPerDismiss)
 
-    if (Math.random() < game.respawnChance) {
+    // Во время обучения новых карточек не подкидываем — игрок учится на одной
+    if (!isTutorial() && Math.random() < game.respawnChance) {
         const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
             .normalize()
             .multiplyScalar(0.8)
@@ -760,7 +761,7 @@ const dismissCard = (card) => {
 const updateNews = (elapsedTime) => {
     const progress = getStoryProgress()
 
-    if (experience.phase === 'running' && !shift.over && elapsedTime >= news.nextSpawnAt) {
+    if (experience.phase === 'running' && !isTutorial() && !shift.over && elapsedTime >= news.nextSpawnAt) {
         spawnCard(nextFeedItem(), elapsedTime)
         news.nextSpawnAt = elapsedTime + THREE.MathUtils.lerp(news.spawnIntervalStart, news.spawnIntervalEnd, progress)
     }
@@ -858,7 +859,7 @@ const drawJobScreen = () => {
 drawJobScreen()
 
 const updateApplications = (elapsedTime) => {
-    if (experience.phase !== 'running' || elapsedTime < applications.nextAt) return
+    if (experience.phase !== 'running' || isTutorial() || elapsedTime < applications.nextAt) return
     applications.nextAt = elapsedTime + applications.interval
 
     applications.sent += 1 + Math.floor(Math.random() * 3)
@@ -1078,6 +1079,9 @@ const ui = {
     clockPanel: document.querySelector('[data-clock-panel]'),
     clock: document.querySelector('[data-clock]'),
     clockGoal: document.querySelector('[data-clock-goal]'),
+    coach: document.querySelector('[data-coach]'),
+    coachText: document.querySelector('[data-coach-text]'),
+    coachSkip: document.querySelector('[data-coach-skip]'),
     shiftOver: document.querySelector('[data-shift-over]'),
     goHome: document.querySelector('[data-go-home]'),
     outroCard: document.querySelector('[data-outro-card]'),
@@ -1108,9 +1112,8 @@ const ui = {
 }
 
 // На сенсорных экранах пишем «Tap» вместо «Click»
-if (window.matchMedia('(pointer: coarse)').matches) {
-    for (const element of document.querySelectorAll('[data-action-word]')) element.textContent = 'Tap'
-}
+const actionWord = window.matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'
+for (const element of document.querySelectorAll('[data-action-word]')) element.textContent = actionWord
 
 // Пока висит стартовый экран, камера медленно облетает офис
 controls.autoRotate = true
@@ -1126,7 +1129,12 @@ const startShift = () => {
     ui.hud.hidden = false
     ui.clockPanel.hidden = false
 
-    // Таймеры истории отсчитываем от момента старта, а не от загрузки страницы
+    if (shouldShowTutorial()) startTutorial()
+    else beginShift()
+}
+
+// Таймеры истории отсчитываем от момента, когда смена реально началась (после обучения), а не от загрузки страницы
+const beginShift = () => {
     const elapsedTime = clock.getElapsedTime()
     story.nextFireAt = elapsedTime + story.startDelay
     news.nextSpawnAt = elapsedTime + 1.5
@@ -1353,12 +1361,13 @@ holdHint.position.copy(holdHintBase)
 scene.add(holdHint)
 
 const updateHoldHint = (elapsedTime) => {
-    const needsHint = experience.phase === 'running' && !game.working
+    const needsHint = experience.phase === 'running' && !shift.over && !game.working
         && (!game.hasWorked || game.performance < DANGER_LEVEL + 15)
     const pulse = 0.5 + 0.5 * Math.sin(elapsedTime * 5)
 
     // Плавно проявляем и прячем
-    const target = needsHint ? 0.6 + 0.4 * pulse : 0
+    // Во время обучения вместо надписи над монитором показываем большую подсказку (см. Tutorial)
+    const target = needsHint && !isTutorial() ? 0.6 + 0.4 * pulse : 0
     holdHint.material.opacity += (target - holdHint.material.opacity) * 0.15
     holdHint.position.y = holdHintBase.y + Math.sin(elapsedTime * 2.5) * 0.03
 
@@ -1381,6 +1390,13 @@ gameFolder.add(game, 'respawnChance').min(0).max(1).step(0.05).name('respawn cha
 
 const onCardHit = () => {
     if (experience.phase !== 'running' || shift.over) return
+
+    // Учебная карточка долетела — без штрафа, просто запускаем её ещё раз
+    if (isTutorial()) {
+        spawnTutorialCard(clock.getElapsedTime())
+        return
+    }
+
     game.stress = Math.min(100, game.stress + game.stressPerHit)
     game.missed++
     game.hitFlash = 1
@@ -1413,14 +1429,17 @@ const updateGame = (elapsedTime, deltaTime) => {
         return
     }
 
-    const shiftFraction = getShiftFraction(elapsedTime)
-    ui.clock.textContent = formatShiftTime(shiftFraction)
-    if (shiftFraction >= 1) {
-        endShift()
-        return
+    // Пока идёт обучение, часы стоят, а Performance сама не падает — меняется только от действий игрока
+    if (!isTutorial()) {
+        const shiftFraction = getShiftFraction(elapsedTime)
+        ui.clock.textContent = formatShiftTime(shiftFraction)
+        if (shiftFraction >= 1) {
+            endShift()
+            return
+        }
     }
 
-    const decay = THREE.MathUtils.lerp(game.performanceDecayStart, game.performanceDecayEnd, getStoryProgress())
+    const decay = isTutorial() ? 0 : THREE.MathUtils.lerp(game.performanceDecayStart, game.performanceDecayEnd, getStoryProgress())
     const work = game.working ? game.workRate : 0
     if (game.working) {
         game.hasWorked = true
@@ -1452,6 +1471,134 @@ const updateGame = (elapsedTime, deltaTime) => {
 }
 
 /**
+ * Tutorial
+ * При первом запуске учим двум действиям прямо в игре: зажать монитор, потом закрыть одно медленное уведомление.
+ * Пока идёт обучение, часы стоят, никого не увольняют и стресс не растёт.
+ * Пройти обучение заново: открыть страницу с #tutorial в адресе
+ */
+const TUTORIAL_STORAGE_KEY = 'nightmare-office:tutorial-done'
+const TUTORIAL_START_PERFORMANCE = 55 // неполная шкала — чтобы было видно, как работа её наполняет
+const TUTORIAL_CARD_DURATION = 10 // учебная карточка летит медленно, обычные в начале — около 9 с
+const TUTORIAL_DONE_DURATION = 2.5 // сколько висит «Nice!» после обучения
+
+const tutorial = {
+    step: null, // null — обучения нет | 'work' | 'dismiss' | 'done' (смена уже идёт, висит «Nice!»)
+    card: null,
+    doneAt: 0,
+}
+
+const tutorialAnchor = new THREE.Vector3()
+
+const isTutorial = () => tutorial.step === 'work' || tutorial.step === 'dismiss'
+
+const shouldShowTutorial = () => {
+    if (window.location.hash === '#tutorial') return true
+    try {
+        return localStorage.getItem(TUTORIAL_STORAGE_KEY) !== '1'
+    } catch {
+        return true
+    }
+}
+
+const setCoach = (html, hasRing = true) => {
+    ui.coachText.innerHTML = html
+    ui.coach.classList.toggle('has-ring', hasRing)
+    // Перезапускаем появление пузыря, чтобы смену шага было заметно
+    ui.coachText.classList.remove('is-new')
+    void ui.coachText.offsetWidth
+    ui.coachText.classList.add('is-new')
+}
+
+const startTutorial = () => {
+    tutorial.step = 'work'
+    game.performance = TUTORIAL_START_PERFORMANCE
+    ui.performance.classList.add('is-coached')
+    ui.coach.hidden = false
+    ui.coachSkip.hidden = false
+    setCoach('<span class="rule-key">Hold</span> the monitor to work')
+}
+
+// Карточка вылетает на полпути между героем и камерой, чуть сбоку — так она точно в кадре, даже на узком экране
+const tutorialSpawnPoint = () => {
+    const cameraRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+    return heroHead.clone().lerp(camera.position, 0.5)
+        .addScaledVector(cameraRight, 1.8)
+        .add(new THREE.Vector3(0, 0.8, 0))
+}
+
+const spawnTutorialCard = (elapsedTime) => {
+    spawnCard(newsFeed[1], elapsedTime, tutorialSpawnPoint())
+    tutorial.card = flyingCards[flyingCards.length - 1]
+    tutorial.card.duration = TUTORIAL_CARD_DURATION
+}
+
+const finishTutorial = () => {
+    try {
+        localStorage.setItem(TUTORIAL_STORAGE_KEY, '1')
+    } catch {
+        // без localStorage обучение просто покажется ещё раз
+    }
+    ui.performance.classList.remove('is-coached')
+    ui.coachSkip.hidden = true
+    beginShift()
+}
+
+ui.coachSkip.addEventListener('click', () => {
+    if (!isTutorial()) return
+    // Учебную карточку тихо убираем, без очков
+    if (tutorial.card && tutorial.card.dismissedAt === null) tutorial.card.dismissedAt = clock.getElapsedTime()
+    tutorial.step = null
+    ui.coach.hidden = true
+    game.performance = 100
+    finishTutorial()
+})
+
+const updateTutorial = (elapsedTime) => {
+    if (tutorial.step === null) return
+
+    // Смена кончилась раньше, чем погасла подсказка, — просто прячем её
+    if (experience.phase !== 'running') {
+        tutorial.step = null
+        ui.coach.hidden = true
+        return
+    }
+
+    // Шаг 1 пройден, когда работа заполнила Performance до конца
+    if (tutorial.step === 'work' && game.performance >= 100) {
+        tutorial.step = 'dismiss'
+        ui.performance.classList.remove('is-coached')
+        setCoach(`<span class="rule-key">${actionWord}</span> the notification before it reaches you`)
+        spawnTutorialCard(elapsedTime)
+    }
+
+    if (tutorial.step === 'dismiss' && tutorial.card.dismissedAt !== null) {
+        tutorial.step = 'done'
+        tutorial.doneAt = elapsedTime
+        setCoach('Nice! Now survive until <strong>06:00</strong>', false)
+        finishTutorial()
+    }
+
+    if (tutorial.step === 'done' && elapsedTime - tutorial.doneAt > TUTORIAL_DONE_DURATION) {
+        tutorial.step = null
+        ui.coach.hidden = true
+        return
+    }
+
+    // Подсказка висит над тем, с чем сейчас нужно что-то сделать: монитором, карточкой, а в конце — героем
+    const anchor = tutorial.step === 'work'
+        ? workHitbox.getWorldPosition(tutorialAnchor)
+        : tutorial.step === 'dismiss' ? tutorial.card.sprite.position : heroHead
+    const { x, y } = projectToScreen(anchor)
+    ui.coach.style.transform = `translate(${x}px, ${y}px)`
+
+    // Пузырь не даём увезти за край экрана, а хвостик всё равно смотрит на цель
+    const halfWidth = ui.coachText.offsetWidth / 2
+    const margin = 16
+    const shift = THREE.MathUtils.clamp(x, margin + halfWidth, sizes.width - margin - halfWidth) - x
+    ui.coach.style.setProperty('--shift', `${shift}px`)
+}
+
+/**
  * Frozen или Very responsive
  * Обе концовки — Performance упала до нуля. Но если игрок всё это время закрывал уведомления,
  * его уволили за «отзывчивость». А если просто сидел и смотрел — он замер
@@ -1474,16 +1621,17 @@ const canLogOff = () => experience.phase === 'running' && !shift.over && getStor
  */
 const lampHintTexture = createGlowLabelTexture('switch it off?', '#ffd9a0')
 const lampHint = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: lampHintTexture.texture, transparent: true, depthWrite: false, opacity: 0 })
+    // fog: false — иначе туман съедает надпись почти целиком
+    new THREE.SpriteMaterial({ map: lampHintTexture.texture, transparent: true, depthWrite: false, fog: false, opacity: 0 })
 )
-lampHint.scale.set(0.2 * lampHintTexture.aspect, 0.2, 1)
+lampHint.scale.set(0.22 * lampHintTexture.aspect, 0.22, 1)
 const lampHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 3.05, 0))
 lampHint.position.copy(lampHintBase)
 scene.add(lampHint)
 
 const updateLampHint = (elapsedTime) => {
     // Дышит медленно и еле заметно — в отличие от яркой HOLD TO WORK
-    const target = canLogOff() ? 0.25 + 0.2 * Math.sin(elapsedTime * 1.2) : 0
+    const target = canLogOff() ? 0.45 + 0.2 * Math.sin(elapsedTime * 1.2) : 0
     lampHint.material.opacity += (target - lampHint.material.opacity) * 0.05
     lampHint.position.y = lampHintBase.y + Math.sin(elapsedTime * 0.8) * 0.04
 }
@@ -1894,6 +2042,7 @@ const tick = () => {
     updateApplications(elapsedTime)
     updateTension(elapsedTime)
     updateGame(elapsedTime, deltaTime) // после updateTension: поверх его цвета экрана рисуем «работу»
+    updateTutorial(elapsedTime)
     updateHoldHint(elapsedTime)
     updateLampHint(elapsedTime)
     updateEnding(elapsedTime)

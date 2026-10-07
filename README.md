@@ -28,14 +28,15 @@ npm run dev
 | `createGhostGeometry` / `updateGhosts` | призрак из LatheGeometry с волнистым подолом, поднимается со стула и бродит по кругу | Geometries, Animations |
 | `getCardUnderPointer` / `dismissCard` | клик по карточке: Raycaster находит спрайт, карточка лопается, рядом появляются две новые | Raycaster and Mouse Events |
 | `experience` / `startShift` | фазы истории: intro → running → ending → done, стартовый экран | — |
-| `updateTension` | туман сгущается, лампа героя коротит, камера дрожит, появляется «Close the laptop» | Animations |
-| `closeLaptop` / `updateEnding` | экраны гаснут, призраки растворяются, рассвет, камера подлетает к герою | Animations, Lights |
+| `updateTension` | туман сгущается, лампа героя коротит, камера дрожит | Animations |
+| `updateEnding` | анимация концовки: свет, призраки, камера подлетает к герою | Animations, Lights |
+| `lampHint` / `canLogOff` | во второй половине ночи у лампы героя тускло светится «switch it off?» — по клику на лампу он уходит | Raycaster, Sprites |
 | `game` / `updateGame` | две шкалы: Performance (держи монитор) и Stress (закрывай карточки), виньетка стресса | — |
 | `addDismissScore` / `getMultiplier` | очки: +5/с за работу, +10 × комбо за карточку, +500 за спокойную концовку, рекорд в localStorage | — |
 | `holdHint` / `updateHoldHint` | пульсирующая надпись HOLD TO WORK над монитором, пока игрок не начал работать | Sprites |
 | `shift` / `endShift` | часы смены 22:00 → 06:00; в 06:00 шкалы замирают и появляется «Go home» | — |
 | `getCardUnderPointer` | попадание по карточке считается в пикселях экрана с запасом 18 px, срабатывает сразу при нажатии | Raycaster |
-| `startEnding` / `endings` | три концовки: calm (закрыл ноутбук), fired (Performance = 0), burnout (Stress = 100), счётчик найденных | — |
+| `startEnding` / `endings` | пять концовок, каждая — последнее уведомление героя с цифрами этой ночи: calm (дожил до 06:00), fired (Performance = 0, но закрывал уведомления), frozen (Performance = 0 и ничего не делал — карточки замирают в воздухе), burnout (Stress = 100), loggedOff (секретная: выключил свою лампу и ушёл, счёт не считается) | — |
 | `src/sound.js` | весь звук генерируется Web Audio API: гул, шипение, сердцебиение, пинги, финальный аккорд | — |
 | `src/canvasText.js` | рисование текста на canvas → текстура (карточки, надписи, экран) | Textures |
 | Debug (lil-gui) | крутилки тумана, света, темпа истории и новостей | Debug UI |
