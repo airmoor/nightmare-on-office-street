@@ -13,6 +13,8 @@ const updateDebugVisibility = () => gui.show(window.location.hash === '#debug')
 updateDebugVisibility()
 window.addEventListener('hashchange', updateDebugVisibility)
 const canvas = document.querySelector('canvas.webgl')
+// Долгое нажатие — главная механика игры, поэтому меню браузера «Сохранить изображение…» на нём не нужно
+canvas.addEventListener('contextmenu', (event) => event.preventDefault())
 const scene = new THREE.Scene()
 
 const params = {
@@ -718,9 +720,12 @@ const nextFeedItem = () => {
     return newsFeed[news.feedIndex++ % newsFeed.length]
 }
 
-// Случайная точка на кольце вокруг героя, где-то в темноте
+// Случайная точка на кольце вокруг героя, где-то в темноте.
+// Сектор со стороны камеры пропускаем: оттуда карточка летит прямо в объектив и раздувается на пол-экрана мыльным пятном
+const CAMERA_SIDE_GAP = THREE.MathUtils.degToRad(50)
 const randomSpawnPoint = () => {
-    const angle = Math.random() * Math.PI * 2
+    const cameraAngle = Math.atan2(camera.position.z - heroHead.z, camera.position.x - heroHead.x)
+    const angle = cameraAngle + CAMERA_SIDE_GAP + Math.random() * (Math.PI * 2 - CAMERA_SIDE_GAP * 2)
     const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random()) * getSpawnScale()
     return new THREE.Vector3(
         heroHead.x + Math.cos(angle) * radius,
@@ -1564,13 +1569,14 @@ const projectToScreen = (position) => {
     return { x: (projected.x + 1) / 2 * sizes.width, y: (1 - projected.y) / 2 * sizes.height }
 }
 
+const POPUP_LIFT = 36
 const showPopup = (position, text, isBad = false) => {
     const { x, y } = projectToScreen(position)
     const popup = document.createElement('span')
     popup.className = isBad ? 'popup is-bad' : 'popup'
     popup.textContent = text
     popup.style.left = `${x}px`
-    popup.style.top = `${y}px`
+    popup.style.top = `${y - POPUP_LIFT}px` // чуть выше точки: иначе «+50» ложится прямо на текст карточки
     ui.popups.append(popup)
     popup.addEventListener('animationend', () => popup.remove())
 }
@@ -1716,7 +1722,8 @@ const updateGame = (elapsedTime, deltaTime) => {
 
     ui.score.textContent = Math.floor(game.score)
     const multiplier = getMultiplier()
-    ui.combo.textContent = multiplier > 1 ? `×${multiplier} combo` : ''
+    // Слово combo на телефоне прячет CSS: с четырёхзначным счётом оно переносится и HUD прыгает
+    ui.combo.innerHTML = multiplier > 1 ? `×${multiplier}<span class="hud-combo-word"> combo</span>` : ''
 
     setMeter(ui.performance, game.performance, game.performance < DANGER_LEVEL)
     setMeter(ui.stress, game.stress, game.stress > 100 - DANGER_LEVEL)
@@ -1846,9 +1853,12 @@ const updateTutorial = (elapsedTime) => {
     placeCoach(anchor)
 }
 
+const COACH_FLIP_Y = 190
 const placeCoach = (anchor) => {
     const { x, y } = projectToScreen(anchor)
     ui.coach.style.transform = `translate(${x}px, ${y}px)`
+    // Цель у верхнего края — пузырь под ней, а не поверх HUD и часов
+    ui.coach.classList.toggle('is-below', y < COACH_FLIP_Y)
 
     // Пузырь не даём увезти за край экрана, а хвостик всё равно смотрит на цель
     const halfWidth = ui.coachText.offsetWidth / 2
