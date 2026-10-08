@@ -339,11 +339,11 @@ const lampHold = { holding: false, progress: 0 } // 0 → 1, пока игрок
 /**
  * Lights
  */
-const ambientLight = new THREE.AmbientLight('#8090b0', 0.08)
+const ambientLight = new THREE.AmbientLight('#8090b0', 0.16)
 scene.add(ambientLight)
 
 // Холодный «лунный» свет из окон — чтобы читались силуэты
-const moonLight = new THREE.DirectionalLight('#6f86b8', 0.25)
+const moonLight = new THREE.DirectionalLight('#6f86b8', 0.45)
 moonLight.position.set(-8, 10, -6)
 scene.add(moonLight)
 
@@ -406,8 +406,9 @@ const showFiringLabel = (desk, reason = pickRandom(firingReasons)) => {
     const { texture, aspect } = createGlowLabelTexture(reason)
     // Sprite всегда повёрнут к камере — удобно для надписей
     const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
+        new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, opacity: 0 })
     )
+    sprite.renderOrder = 5 // поверх ламп и проводов, но под карточками
     const height = 0.4 * getSpriteScale()
     sprite.scale.set(height * aspect, height, 1)
     sprite.position.copy(desk.position)
@@ -680,6 +681,95 @@ const getCardTexture = (item) => {
 }
 
 const flyingCards = []
+
+/**
+ * Bursts
+ * Ночь идёт не ровным потоком, а с двумя сценами. В 22:00 — cold open: гаснет лампа у соседа через стол
+ * и прилетает залп из трёх уведомлений, игрок с первых секунд занят и понимает, о чём игра.
+ * В 02:00 — волна сокращений: гаснут сразу две лампы и прилетает второй залп, середина ночи не провисает.
+ * После каждого залпа — короткая пауза, потом обычный поток
+ */
+const BURSTS = [
+    {
+        at: 0, // доля смены
+        fire: 'neighbour',
+        cards: [
+            { label: 'Slack · #general', text: 'Your access to #team-platform has been removed', accent: accents.slack },
+            { label: 'Calendar', text: '15-min "catch-up" with HR — tomorrow, 9:00', accent: accents.calendar },
+            { label: 'Breaking', text: 'Big Tech cuts 12,000 jobs, cites AI efficiency', accent: accents.news },
+        ],
+    },
+    {
+        at: 0.5, // 02:00
+        fire: 2,
+        cards: [
+            { label: 'Email · CEO', text: 'A message from leadership: "Tough decisions"', accent: accents.email },
+            { label: 'Slack · Manager', text: 'You online? Need you on a call at 7', accent: accents.slack },
+            { label: 'Breaking', text: 'AI agents now close 60% of tickets', accent: accents.news },
+        ],
+    },
+]
+const BURST_FIRE_DELAY = 0.3 // лампа гаснет чуть раньше карточек
+const BURST_CARD_STEP = 0.7 // интервал между карточками залпа
+const BURST_BREATH = 3.5 // пауза после залпа, прежде чем пойдёт обычный поток
+const bursts = { queue: [] } // события по времени: { at, fire } или { at, item }
+
+const getNearestColleague = () => {
+    let nearest = null
+    let nearestDistance = Infinity
+    for (const desk of colleagues) {
+        if (desk.userData.state !== 'on') continue
+        const distance = desk.position.distanceTo(heroDesk.position)
+        if (distance < nearestDistance) {
+            nearest = desk
+            nearestDistance = distance
+        }
+    }
+    return nearest
+}
+
+// Ставит в очередь все залпы ночи. Вызывается в beginShift, когда длина смены уже известна
+const scheduleBursts = (elapsedTime) => {
+    bursts.queue = []
+    for (const burst of BURSTS) {
+        const start = elapsedTime + burst.at * shift.duration
+        bursts.queue.push({ at: start + BURST_FIRE_DELAY, fire: burst.fire })
+        burst.cards.forEach((item, index) => {
+            bursts.queue.push({ at: start + BURST_FIRE_DELAY + 0.2 + index * BURST_CARD_STEP, item, last: index === burst.cards.length - 1 })
+        })
+        // Залп в самом начале: обычный поток ждёт, пока он закончится
+        if (burst.at === 0) {
+            news.nextSpawnAt = start + BURST_FIRE_DELAY + 0.2 + (burst.cards.length - 1) * BURST_CARD_STEP + BURST_BREATH
+        }
+    }
+    // Обычные увольнения начнутся через обычный интервал после соседа, а не через startDelay
+    story.nextFireAt = elapsedTime + BURST_FIRE_DELAY + story.firstInterval * story.acceleration
+}
+
+const updateBursts = (elapsedTime) => {
+    if (experience.phase !== 'running') {
+        bursts.queue.length = 0
+        return
+    }
+    while (bursts.queue.length && elapsedTime >= bursts.queue[0].at) {
+        const event = bursts.queue.shift()
+        if (event.fire === 'neighbour') {
+            const neighbour = getNearestColleague()
+            if (neighbour) {
+                fireColleague(neighbour)
+                story.firedCount++
+            }
+        } else if (event.fire) {
+            for (let i = 0; i < event.fire; i++) if (fireRandomColleague()) story.firedCount++
+        }
+        if (event.item) {
+            spawnCard(event.item, elapsedTime)
+            // После последней карточки залпа — пауза в обычном потоке
+            if (event.last) news.nextSpawnAt = Math.max(news.nextSpawnAt, elapsedTime + BURST_BREATH)
+        }
+    }
+}
+
 const news = {
     nextSpawnAt: 1.5,
     feedIndex: 0,
@@ -736,9 +826,12 @@ const randomSpawnPoint = () => {
 
 const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
     const { texture, aspect } = getCardTexture(item)
+    // depthTest: false — карточку не закрывают лампы, провода и призраки: её надо успеть прочитать и кликнуть.
+    // fog: false — дальние карточки не тонут в тумане. Порядок: надписи (5) → карточки (6) → HOLD TO WORK (10)
     const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: 0 })
+        new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, fog: false, opacity: 0 })
     )
+    sprite.renderOrder = 6
     const height = (item.noise ? 0.45 * NOISE_SCALE : 0.45) * getCardScale()
     sprite.scale.set(height * aspect, height, 1)
     sprite.position.copy(from)
@@ -799,7 +892,10 @@ const updateNews = (elapsedTime) => {
 
     if (experience.phase === 'running' && !isTutorial() && !shift.over && elapsedTime >= news.nextSpawnAt) {
         spawnCard(nextFeedItem(), elapsedTime)
-        news.nextSpawnAt = elapsedTime + THREE.MathUtils.lerp(news.spawnIntervalStart, news.spawnIntervalEnd, progress)
+        // Линейно растёт частота (карточек в секунду), а не уменьшается интервал. Иначе 1/интервал
+        // к утру взлетает гиперболой: до 04:00 ровно, а последний час — почти вдвое больше карточек
+        const rate = THREE.MathUtils.lerp(1 / news.spawnIntervalStart, 1 / news.spawnIntervalEnd, progress)
+        news.nextSpawnAt = elapsedTime + 1 / rate
     }
 
     for (let i = flyingCards.length - 1; i >= 0; i--) {
@@ -948,11 +1044,13 @@ window.addEventListener('resize', () => {
 const isPortrait = () => sizes.width < sizes.height
 const getCameraFov = () => (isPortrait() ? 55 : 45)
 const CAMERA_DISTANCE_PORTRAIT = 12
+// На широком экране камера тоже ближе, чем в исходной точке (≈13.6): герой и карточки в 1.5 раза крупнее, а комната всё ещё видна
+const CAMERA_DISTANCE_LANDSCAPE = 9
 const getSpriteScale = () => (isPortrait() ? 1.3 : 1)
 // Карточкам — ещё крупнее: на них текст, и его надо успеть прочитать на лету
 const getCardScale = () => (isPortrait() ? 1.5 : 1)
 // Карточки на телефоне рождаются ближе к герою — иначе половину полёта они за краем узкого экрана
-const getSpawnScale = () => (isPortrait() ? 0.75 : 1)
+const getSpawnScale = () => 0.75
 
 const camera = new THREE.PerspectiveCamera(getCameraFov(), sizes.width / sizes.height, 0.1, 100)
 camera.position.set(7, 7.5, 11)
@@ -965,9 +1063,8 @@ controls.maxPolarAngle = Math.PI * 0.45 // не даём заглянуть по
 controls.minDistance = 3
 controls.maxDistance = 22
 
-const CAMERA_DISTANCE_DEFAULT = camera.position.distanceTo(controls.target)
 const applyCameraDistance = () => {
-    const distance = isPortrait() ? CAMERA_DISTANCE_PORTRAIT : CAMERA_DISTANCE_DEFAULT
+    const distance = isPortrait() ? CAMERA_DISTANCE_PORTRAIT : CAMERA_DISTANCE_LANDSCAPE
     camera.position.sub(controls.target).setLength(distance).add(controls.target)
 }
 applyCameraDistance()
@@ -1227,6 +1324,7 @@ const beginShift = () => {
     applications.nextAt = elapsedTime + 1
     shift.start = elapsedTime
     shift.duration = getShiftDuration()
+    scheduleBursts(elapsedTime)
 }
 
 /**
@@ -1449,10 +1547,10 @@ const getShiftFraction = (elapsedTime) =>
  * Сложность внутри ночи: 0 в 22:00 → 1 в 06:00. От неё зависят спад Performance, частота и скорость карточек.
  * Раньше сложность считалась по числу уволенных, а увольнения к утру идут всё чаще — и последние 20% ночи
  * сложность прыгала с 0.68 до 1: ровная ночь и стена в конце. Теперь она растёт по времени, почти линейно.
- * Кривая > 1 — чуть мягче в начале, чтобы было время разогреться. Туман, мигание лампы и звук
+ * Кривая 1 — ровный рост без стены под утро. Пустоту в начале и в середине закрывают залпы (Bursts). Туман, мигание лампы и звук
  * по-прежнему идут за увольнениями (getStoryProgress): это атмосфера, а не сложность
  */
-const DIFFICULTY_CURVE = 1.2
+const DIFFICULTY_CURVE = 1
 
 const getNightDifficulty = () => {
     if (experience.phase !== 'running' || isTutorial()) return 0
@@ -2264,6 +2362,14 @@ const showOutro = (kind) => {
         ui.promote.hidden = false
     }
 
+    // Не дожил до утра на высоком грейде — можно сделать шаг назад, той же кнопкой
+    const previousLevel = LEVEL_ORDER[LEVEL_ORDER.indexOf(currentLevelKey) - 1]
+    if (FAIL_ENDINGS.includes(kind) && DEMOTE_FROM.includes(currentLevelKey) && previousLevel) {
+        ui.promote.dataset.next = previousLevel
+        ui.promote.textContent = `or step down ← ${levels[previousLevel].name}`
+        ui.promote.hidden = false
+    }
+
     // Все концовки — слоты: найденные с иконкой, ненайденные пустые. Текущая подсвечена и подписана
     const kinds = Object.keys(endings)
     ui.outroFound.textContent = `${experience.endingsFound.size}/${kinds.length}`
@@ -2500,19 +2606,19 @@ const LEVEL_EASIEST = {
         respawnChance: 0.5,
         noiseChance: 0,
     },
-    news: { spawnIntervalStart: 3.5, spawnIntervalEnd: 0.9, flightDurationStart: 9, flightDurationEnd: 3.5 },
+    news: { spawnIntervalStart: 3, spawnIntervalEnd: 1.2, flightDurationStart: 9, flightDurationEnd: 3.5 },
 }
 
 const LEVEL_HARDEST = {
     game: {
         performanceDecayStart: 4,
         performanceDecayEnd: 10,
-        stressPerHit: 14,
-        stressDecay: 0.8, // стресс уходит медленнее — пропущенные карточки копятся, и вторая шкала тоже давит
-        respawnChance: 0.65,
+        stressPerHit: 12,
+        stressDecay: 1, // стресс уходит медленнее — пропущенные карточки копятся, и вторая шкала тоже давит
+        respawnChance: 0.55,
         noiseChance: 0.3,
     },
-    news: { spawnIntervalStart: 2, spawnIntervalEnd: 0.5, flightDurationStart: 6.5, flightDurationEnd: 2.5 },
+    news: { spawnIntervalStart: 2, spawnIntervalEnd: 0.8, flightDurationStart: 6.5, flightDurationEnd: 2.5 },
 }
 
 const levels = {
@@ -2531,6 +2637,10 @@ const getLevelParams = (group, tier) => Object.fromEntries(
 )
 
 const LEVEL_ORDER = Object.keys(levels)
+// С каких грейдов после проигрыша предлагаем шаг вниз, и какие концовки считаются проигрышем
+// (loggedOff — не проигрыш: герой ушёл сам)
+const DEMOTE_FROM = ['senior', 'lead']
+const FAIL_ENDINGS = ['fired', 'burnout', 'frozen']
 const LEVEL_STORAGE_KEY = 'nightmare-office:level'
 const PASSED_STORAGE_KEY = 'nightmare-office:passed'
 
@@ -2668,6 +2778,7 @@ const tick = () => {
     updateColleagues(elapsedTime)
     updateFiringLabels(elapsedTime)
     updateGhosts(elapsedTime)
+    updateBursts(elapsedTime)
     updateNews(elapsedTime)
     updateApplications(elapsedTime)
     updateLampHold(deltaTime)

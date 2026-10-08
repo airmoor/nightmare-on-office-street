@@ -5,6 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nightmare on Office Street</title>
     <meta name="description" content="A small Halloween story about layoffs, AI hype and a guy who just wants a quiet life. Made with Three.js." />
+    <meta name="theme-color" content="#05060a" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Превью ссылки в Discord, X, Telegram, LinkedIn. Картинка — static/og-image.jpg, 1200×630 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Nightmare on Office Street" />
+    <meta property="og:title" content="Nightmare on Office Street" />
+    <meta property="og:description" content="Night shift in an open office. One by one, the lights go out. Survive until 06:00. A Three.js Halloween story about layoffs and AI hype." />
+    <meta property="og:url" content="https://nightmare-on-office-street.vercel.app/" />
+    <meta property="og:image" content="https://nightmare-on-office-street.vercel.app/og-image.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A dark open-plan office at night, one lit desk, the title Nightmare on Office Street" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Nightmare on Office Street" />
+    <meta name="twitter:description" content="Night shift in an open office. One by one, the lights go out. Survive until 06:00." />
+    <meta name="twitter:image" content="https://nightmare-on-office-street.vercel.app/og-image.jpg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" />
@@ -164,7 +181,7 @@
           <span class="clockin-text" aria-hidden="true"><span class="clockin-prompt">&gt;</span> hold to clock in again<span class="clockin-cursor">_</span></span>
           <span class="clockin-track" aria-hidden="true"><span class="clockin-fill"></span></span>
         </button>
-        <!-- Появляется только после спокойной концовки, если есть уровень выше -->
+        <!-- Смена грейда: после спокойной концовки — повышение, после проигрыша на Senior/Lead — шаг вниз -->
         <button type="button" class="outro-promote" data-promote hidden></button>
 
         <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
