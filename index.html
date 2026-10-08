@@ -59,6 +59,8 @@
 
         <!-- Правила по запросу: открываются поверх сцены (десктоп — панель справа, телефон — bottom sheet), страница не двигается -->
         <button type="button" class="handbook-toggle" data-handbook-open aria-haspopup="dialog" aria-controls="handbook">read the handbook<span class="handbook-caret" aria-hidden="true"></span></button>
+        <!-- Без игры: просто походить по офису и посмотреть сцену -->
+        <button type="button" class="handbook-toggle explore-toggle" data-explore>or just look around<span class="handbook-caret" aria-hidden="true"></span></button>
 
         <dialog class="handbook" id="handbook" data-handbook aria-labelledby="handbook-title">
           <div class="handbook-sheet">
@@ -198,6 +200,12 @@
     </aside>
 
     <!-- Кнопка звука видна всегда, даже на стартовом экране. Клавиша M делает то же самое -->
+    <!-- Режим Look around: подсказка по управлению и выход -->
+    <div class="explore-bar" data-explore-bar hidden>
+      <span class="explore-hint" data-explore-hint></span>
+      <button type="button" class="explore-back" data-explore-back>[esc] back</button>
+    </div>
+
     <button class="mute" data-mute aria-pressed="false" title="Toggle sound (M)">
       <svg class="mute-icon mute-icon-on" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 9v6h4l5 4V5L8 9H4z" />

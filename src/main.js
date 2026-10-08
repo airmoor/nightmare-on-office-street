@@ -1059,7 +1059,7 @@ scene.add(camera)
 const controls = new OrbitControls(camera, canvas)
 controls.target.copy(heroDesk.position).add(new THREE.Vector3(0, 0.8, 0))
 controls.enableDamping = true
-controls.maxPolarAngle = Math.PI * 0.45 // не даём заглянуть под пол
+controls.maxPolarAngle = Math.PI * 0.45 // не даём заглянуть под пол (см. MAX_POLAR_ANGLE)
 controls.minDistance = 3
 controls.maxDistance = 22
 
@@ -1068,6 +1068,69 @@ const applyCameraDistance = () => {
     camera.position.sub(controls.target).setLength(distance).add(controls.target)
 }
 applyCameraDistance()
+
+/**
+ * Camera modes
+ * Во время смены камера почти зафиксирована: офис можно чуть повернуть, но не развернуть боком,
+ * не приблизить и не уехать панорамой — случайный свайп мимо карточки иначе ломает весь кадр.
+ * Свободная камера — в режиме Look around (без игры) и на финальном экране
+ */
+const MAX_POLAR_ANGLE = Math.PI * 0.45 // не даём заглянуть под пол
+const gameplayView = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target))
+const GAMEPLAY_ROTATE_RANGE = THREE.MathUtils.degToRad(15) // насколько можно повернуть офис влево-вправо
+const GAMEPLAY_TILT_RANGE = THREE.MathUtils.degToRad(8) // и вверх-вниз
+
+const lockCamera = () => {
+    controls.minAzimuthAngle = gameplayView.theta - GAMEPLAY_ROTATE_RANGE
+    controls.maxAzimuthAngle = gameplayView.theta + GAMEPLAY_ROTATE_RANGE
+    controls.minPolarAngle = gameplayView.phi - GAMEPLAY_TILT_RANGE
+    controls.maxPolarAngle = Math.min(MAX_POLAR_ANGLE, gameplayView.phi + GAMEPLAY_TILT_RANGE)
+    controls.enableZoom = false
+    controls.enablePan = false
+    controls.rotateSpeed = 0.4
+}
+
+const unlockCamera = () => {
+    controls.minAzimuthAngle = -Infinity
+    controls.maxAzimuthAngle = Infinity
+    controls.minPolarAngle = 0
+    controls.maxPolarAngle = MAX_POLAR_ANGLE
+    controls.enableZoom = true
+    controls.enablePan = true
+    controls.rotateSpeed = 1
+}
+
+// На стартовом экране камера облетает офис, так что к началу смены она может смотреть откуда угодно.
+// Плавно возвращаем её в игровой ракурс и только потом ставим ограничения — иначе кадр дёрнется к границе
+const CAMERA_RETURN_DURATION = 1.2
+const cameraReturn = { active: false, progress: 0, from: new THREE.Spherical() }
+const cameraOffset = new THREE.Vector3()
+
+const startCameraReturn = () => {
+    cameraReturn.from.setFromVector3(cameraOffset.copy(camera.position).sub(controls.target))
+    cameraReturn.progress = 0
+    cameraReturn.active = true
+}
+
+const updateCameraReturn = (deltaTime) => {
+    if (!cameraReturn.active) return
+    cameraReturn.progress = Math.min(1, cameraReturn.progress + deltaTime / CAMERA_RETURN_DURATION)
+    const t = cameraReturn.progress
+    const eased = t * t * (3 - 2 * t)
+    // Поворачиваем по короткой дуге, даже если автоповорот накрутил больше полного круга
+    const fullTurn = Math.PI * 2
+    const thetaDelta = ((gameplayView.theta - cameraReturn.from.theta) % fullTurn + fullTurn * 1.5) % fullTurn - Math.PI
+    const view = new THREE.Spherical(
+        cameraReturn.from.radius,
+        THREE.MathUtils.lerp(cameraReturn.from.phi, gameplayView.phi, eased),
+        cameraReturn.from.theta + thetaDelta * eased
+    )
+    camera.position.copy(controls.target).add(cameraOffset.setFromSpherical(view))
+    if (t === 1) {
+        cameraReturn.active = false
+        if (experience.phase === 'running') lockCamera()
+    }
+}
 
 /**
  * Renderer
@@ -1288,6 +1351,10 @@ const ui = {
     levelButtons: document.querySelectorAll('[data-level]'),
     levelDesc: document.querySelector('[data-level-desc]'),
     promote: document.querySelector('[data-promote]'),
+    explore: document.querySelector('[data-explore]'),
+    exploreBar: document.querySelector('[data-explore-bar]'),
+    exploreHint: document.querySelector('[data-explore-hint]'),
+    exploreBack: document.querySelector('[data-explore-back]'),
 }
 
 // На сенсорных экранах пишем «Tap» вместо «Click»
@@ -1303,6 +1370,7 @@ const startShift = () => {
     experience.phase = 'running'
     sound.start()
     controls.autoRotate = false
+    startCameraReturn()
     restoreIntroLights()
 
     if (ui.handbook.open) ui.handbook.close()
@@ -1315,6 +1383,39 @@ const startShift = () => {
     if (shouldShowTutorial()) startTutorial()
     else beginShift()
 }
+
+/**
+ * Look around
+ * Режим без игры: офис стоит, никого не увольняют, камера свободная — можно покрутить, приблизить и пройтись.
+ * Выход — Esc или кнопка, страница просто перезагружается в стартовый экран
+ */
+// Чтобы при панораме не уехать в пустоту за стенами офиса
+const EXPLORE_BOUNDS = new THREE.Box3(new THREE.Vector3(-9, 0.3, -7), new THREE.Vector3(9, 3, 7))
+
+const startExplore = () => {
+    if (experience.phase !== 'intro') return
+    experience.phase = 'explore'
+    sound.start()
+    controls.autoRotate = false
+    restoreIntroLights()
+    unlockCamera()
+
+    if (ui.handbook.open) ui.handbook.close()
+    ui.intro.classList.add('is-hidden')
+    setTimeout(() => (ui.intro.hidden = true), 1200)
+    ui.exploreHint.textContent = window.matchMedia('(pointer: coarse)').matches
+        ? 'drag to look around · pinch to zoom · two fingers to move'
+        : 'drag to look around · scroll to zoom · right-drag to move'
+    ui.exploreBar.hidden = false
+}
+
+const leaveExplore = () => window.location.reload()
+
+ui.explore.addEventListener('click', startExplore)
+ui.exploreBack.addEventListener('click', leaveExplore)
+window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && experience.phase === 'explore') leaveExplore()
+})
 
 // Таймеры истории отсчитываем от момента, когда смена реально началась (после обучения), а не от загрузки страницы
 const beginShift = () => {
@@ -2219,6 +2320,9 @@ const startEnding = (kind) => {
 
     experience.phase = 'ending'
     experience.ending = kind
+    // Финальный облёт камеры двигает её сам — снимаем игровые ограничения, чтобы они его не обрезали
+    cameraReturn.active = false
+    unlockCamera()
     experience.endingStart = elapsedTime
     experience.endingIsNew = (() => {
         try {
@@ -2791,7 +2895,9 @@ const tick = () => {
     updateEnding(elapsedTime)
     updateIntroFraming(deltaTime)
 
+    updateCameraReturn(deltaTime)
     controls.update()
+    if (experience.phase === 'explore') controls.target.clamp(EXPLORE_BOUNDS.min, EXPLORE_BOUNDS.max)
 
     // Дрожание добавляем только на время рендера, чтобы оно не копилось в позиции камеры
     camera.position.add(cameraShake)
