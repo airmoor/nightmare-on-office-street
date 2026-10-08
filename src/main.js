@@ -911,8 +911,6 @@ const updateApplications = (elapsedTime) => {
     applications.sent += 1 + Math.floor(Math.random() * 3)
     if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
     drawJobScreen()
-// Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
-document.fonts?.ready.then(drawJobScreen)
 }
 
 /**
@@ -981,7 +979,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(sizes.pixelRatio)
 renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.shadowMap.type = THREE.PCFShadowMap
 renderer.toneMapping = THREE.ACESFilmicToneMapping
 
 /**
@@ -2177,8 +2175,6 @@ const startEnding = (kind) => {
         applications.interviews = 1
         applications.lastReply = 'Are you free Tuesday?'
         drawJobScreen()
-// Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
-document.fonts?.ready.then(drawJobScreen)
         sound.calm()
     } else if (kind === 'fired') {
         showFiringLabel(heroDesk, 'LOW PERFORMANCE')
@@ -2624,7 +2620,21 @@ for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => start
 /**
  * Animate
  */
-const clock = new THREE.Clock()
+// Свои часы вместо THREE.Clock: копим только ограниченный шаг кадра.
+// Пока вкладка скрыта, кадров нет — и игровое время стоит, а не убегает вперёд
+const MAX_FRAME_STEP = 0.1
+const clock = (() => {
+    let elapsed = 0
+    let last = performance.now()
+    return {
+        update() {
+            const now = performance.now()
+            elapsed += Math.min((now - last) / 1000, MAX_FRAME_STEP)
+            last = now
+        },
+        getElapsedTime: () => elapsed,
+    }
+})()
 
 let previousTime = 0
 
@@ -2647,8 +2657,9 @@ const updateIntroFraming = (deltaTime) => {
 }
 
 const tick = () => {
+    clock.update()
     const elapsedTime = clock.getElapsedTime()
-    const deltaTime = Math.min(elapsedTime - previousTime, 0.1) // если вкладка была скрыта, не делаем огромный скачок
+    const deltaTime = elapsedTime - previousTime // шаг уже ограничен в clock.update()
     previousTime = elapsedTime
 
     updateStory(elapsedTime)
