@@ -26,6 +26,7 @@ npm run dev
 | `BURSTS` / `updateBursts` | два залпа: в 22:00 гаснет лампа у соседа и прилетают три уведомления (cold open), в 02:00 гаснут сразу две лампы и прилетает второй залп; после каждого — пауза 3.5 с | Animations |
 | `newsFeed` / `updateNews` | карточки новостей летят к голове героя, чем дальше — тем чаще и быстрее | Animations |
 | `applications` / `drawJobScreen` | второй монитор: счётчик откликов и отказы, перерисовывается canvas | Textures |
+| `CODE_FILES` / `updateCodeScreen` | главный монитор героя — редактор: пока держишь монитор, текст набирается по символу; по кругу три файла — тикет, самооценка к review, резюме | Textures |
 | `createGhostGeometry` / `updateGhosts` | призрак из LatheGeometry с волнистым подолом, поднимается со стула и бродит по кругу | Geometries, Animations |
 | `getCardUnderPointer` / `dismissCard` | клик по карточке: Raycaster находит спрайт, карточка лопается, рядом появляются две новые | Raycaster and Mouse Events |
 | `experience` / `startShift` | фазы истории: intro → running → ending → done, стартовый экран | — |
@@ -44,7 +45,7 @@ npm run dev
 | `noiseFeed` | Middle+: серые полупрозрачные карточки-шум — безвредны: долетел — ничего, кликнул — без очков | Sprites |
 | `showCallout` | при первом шуме за ночь — пузырь «Grey ones are noise — safe to ignore» | — |
 | `lockCamera` / `startCameraReturn` | во время смены камера почти зафиксирована: ±15° по кругу, ±8° по наклону, без зума и панорамы; на старте плавно возвращается в игровой ракурс | Camera, Orbit controls |
-| `startExplore` | режим «or just look around» на стартовом экране: без игры, свободная камера в пределах офиса, выход по Esc | Orbit controls |
+| `startExplore` / `updateAmbient` | режим «or just look around» на стартовом экране: без игры, свободная камера в пределах офиса, выход по Esc. Офис живёт сам: раз в 5–9 с гаснет лампа и поднимается призрак, раз в 3–5 с к герою медленно летит уведомление, на втором мониторе копятся отказы; когда остаётся 5 коллег — рубильник, и всё сначала | Orbit controls |
 | Debug (lil-gui) | крутилки тумана, света, темпа истории и новостей, выбор уровня | Debug UI |
 
 ## Уровни

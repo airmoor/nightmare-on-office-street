@@ -315,6 +315,169 @@ jobMonitor.position.set(0.62, 1.1, -0.12)
 jobMonitor.rotation.y = -0.45
 heroDesk.add(jobMonitor)
 
+/**
+ * Code screen
+ * На главном мониторе героя — редактор. Пока игрок держит монитор, текст набирается по символу; отпустил — мигает курсор.
+ * Три файла по кругу рассказывают ночь: срочный тикет → самооценка к performance review → резюме.
+ * Тема светлая: экран — источник света в тёмном офисе, а цвет материала (синий, зелёный при работе)
+ * по-прежнему тонирует всю картинку — монитор светится как раньше, просто теперь на нём что-то есть
+ */
+const codeScreen = createScreenTexture({ width: 512, height: 288 })
+heroDesk.userData.screen.material.map = codeScreen.texture
+heroDesk.userData.screen.material.needsUpdate = true
+
+const CODE_FILES = [
+    {
+        name: 'payments/retry.ts',
+        ticket: 'JIRA-4821 · due yesterday',
+        status: 'main · 3 failing checks',
+        lines: [
+            '// TODO: make this AI-native (per CEO)',
+            'export async function retryPayment(id) {',
+            '  const tx = await db.tx.find(id)',
+            "  if (!tx) throw new Error('not found')",
+            '  for (let i = 0; i < 3; i++) {',
+            '    if (await gateway.charge(tx)) return',
+            '    await sleep(2 ** i * 1000)',
+            '  }',
+            '  // works on my machine. ship it',
+            "  return escalate(tx, 'on-call: me')",
+            '}',
+        ],
+    },
+    {
+        name: 'self-assessment.md',
+        ticket: 'HR · due 09:00',
+        status: 'draft · autosaved',
+        lines: [
+            '# Self-assessment, Q3',
+            '## Impact',
+            '- Kept payments up through 3 reorgs',
+            '- Mentored 2 juniors (both laid off)',
+            '- Adopted 4 AI tools, as requested',
+            '## Areas to improve',
+            '- Be more AI-native',
+            '- Be more visible',
+            '- Sleep is not a deliverable',
+        ],
+    },
+    {
+        name: 'resume_final_v7.md',
+        ticket: 'personal · close fast',
+        status: 'private · not synced',
+        lines: [
+            '# Senior Engineer, open to work',
+            '- 7 years shipping things nobody saw',
+            '- Survived 4 restructurings',
+            '- Fluent in TypeScript, Jira, fear',
+            '## Looking for',
+            '- A team that exists next month',
+            '- A manager who never says',
+            '  "quick sync?"',
+        ],
+    },
+]
+const CODE_TYPE_SPEED = 38 // символов в секунду, пока игрок держит монитор
+const CODE_IDLE_SPEED = 16 // на стартовом экране и в Look around герой печатает сам, неспешно
+const CODE_FILE_PAUSE = 2.5 // сколько секунд дописанный файл висит на экране, прежде чем открыть следующий
+const code = { file: 0, typed: 0, doneAt: null, drawnChars: -1, drawnCursor: null }
+const getCodeLength = (file) => file.lines.reduce((total, line) => total + line.length + 1, 0)
+
+const drawCodeScreen = (showCursor) => {
+    const file = CODE_FILES[code.file]
+    codeScreen.redraw((context, width, height, font) => {
+        context.fillStyle = '#eef2f8'
+        context.fillRect(0, 0, width, height)
+        context.textBaseline = 'middle'
+
+        // Вкладка с именем файла и «горящим» тикетом
+        context.fillStyle = '#d5deec'
+        context.fillRect(0, 0, width, 34)
+        context.font = `500 15px ${font}`
+        context.fillStyle = '#1f2a3a'
+        context.textAlign = 'left'
+        context.fillText(file.name, 14, 17)
+        context.fillStyle = '#c0392b'
+        context.textAlign = 'right'
+        context.fillText(file.ticket, width - 14, 17)
+
+        // Набранные строки. Если не помещаются — показываем последние, как будто редактор прокручивается
+        const lineHeight = 23
+        const top = 44
+        const maxLines = Math.floor((height - top - 30) / lineHeight)
+        let left = Math.floor(code.typed)
+        const shown = []
+        for (const line of file.lines) {
+            if (left <= 0) break
+            shown.push(line.slice(0, left))
+            left -= line.length + 1
+        }
+        if (shown.length === 0) shown.push('')
+        const first = Math.max(0, shown.length - maxLines)
+
+        context.font = `18px ${font}`
+        shown.slice(first).forEach((text, index) => {
+            const y = top + index * lineHeight + lineHeight / 2
+            context.fillStyle = '#9aa6b8'
+            context.textAlign = 'right'
+            context.fillText(String(first + index + 1), 32, y)
+            context.textAlign = 'left'
+            const trimmed = text.trimStart()
+            context.fillStyle = trimmed.startsWith('//') || trimmed.startsWith('#') ? '#4f7a57' : '#1b2433'
+            context.fillText(text, 44, y)
+            if (showCursor && first + index === shown.length - 1) {
+                context.fillStyle = '#1b2433'
+                context.fillRect(44 + context.measureText(text).width + 1, y - 10, 10, 20)
+            }
+        })
+
+        // Статус-бар
+        context.fillStyle = '#d5deec'
+        context.fillRect(0, height - 26, width, 26)
+        context.font = `13px ${font}`
+        context.fillStyle = '#4a5568'
+        context.fillText(file.status, 14, height - 13)
+    })
+}
+drawCodeScreen(true)
+
+const updateCodeScreen = (elapsedTime, deltaTime) => {
+    const { phase } = experience
+    let typing = false
+    let speed = CODE_TYPE_SPEED
+
+    if (phase === 'running') {
+        typing = game.working
+    } else if (phase === 'intro' || phase === 'explore') {
+        // Сам по себе герой печатает урывками: то быстро, то замирает и смотрит в экран
+        typing = Math.sin(elapsedTime * 0.9) + Math.sin(elapsedTime * 2.3) * 0.5 > -0.3
+        speed = CODE_IDLE_SPEED
+        heroDesk.userData.person.position.y = typing ? Math.abs(Math.sin(elapsedTime * 25)) * 0.012 : 0
+    } else {
+        return // финал: экран замирает на том, что успел набрать
+    }
+
+    const total = getCodeLength(CODE_FILES[code.file])
+    if (typing && code.typed < total) code.typed = Math.min(total, code.typed + speed * deltaTime)
+    if (code.typed >= total) {
+        if (code.doneAt === null) code.doneAt = elapsedTime
+        if (elapsedTime - code.doneAt > CODE_FILE_PAUSE) {
+            code.file = (code.file + 1) % CODE_FILES.length
+            code.typed = 0
+            code.doneAt = null
+        }
+    }
+
+    // Пока печатает — курсор горит, иначе мигает. Перерисовываем только когда что-то изменилось
+    const showCursor = typing || Math.floor(elapsedTime * 2) % 2 === 0
+    const chars = Math.floor(code.typed) + code.file * 10000
+    if (chars !== code.drawnChars || showCursor !== code.drawnCursor) {
+        code.drawnChars = chars
+        code.drawnCursor = showCursor
+        drawCodeScreen(showCursor)
+    }
+}
+
 // Точка, в которую летят все новости — голова героя
 const heroHead = heroDesk.position.clone().add(new THREE.Vector3(0, 1.5, 0.57))
 
@@ -1399,6 +1562,7 @@ const startExplore = () => {
     controls.autoRotate = false
     restoreIntroLights()
     unlockCamera()
+    startAmbient(clock.getElapsedTime())
 
     if (ui.handbook.open) ui.handbook.close()
     ui.intro.classList.add('is-hidden')
@@ -1416,6 +1580,55 @@ ui.exploreBack.addEventListener('click', leaveExplore)
 window.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && experience.phase === 'explore') leaveExplore()
 })
+
+/**
+ * Look around: офис живёт сам
+ * Те же события, что и в смене, только реже и без последствий: изредка гаснет лампа и поднимается призрак,
+ * к герою медленно летят уведомления (кликать не нужно — они тают у головы), на втором мониторе копятся отказы.
+ * Когда в офисе почти никого не осталось, кто-то щёлкает рубильником — и всё сначала
+ */
+const AMBIENT_FIRE_EVERY = [5, 9] // секунды между увольнениями
+const AMBIENT_CARD_EVERY = [3, 5] // между уведомлениями
+const AMBIENT_CARD_FLIGHT = 10 // уведомления летят медленнее, чем в игре
+const AMBIENT_APPLICATION_EVERY = 2.5
+const AMBIENT_RELIGHT_WHEN_LEFT = 5 // сколько коллег должно остаться, чтобы офис «перезапустился»
+const ambient = { nextFireAt: 0, nextCardAt: 0, nextApplicationAt: 0 }
+const randomBetween = ([min, max]) => min + Math.random() * (max - min)
+
+const startAmbient = (elapsedTime) => {
+    ambient.nextFireAt = elapsedTime + 2.5
+    ambient.nextCardAt = elapsedTime + 1.5
+    ambient.nextApplicationAt = elapsedTime + 1
+}
+
+const updateAmbient = (elapsedTime) => {
+    if (experience.phase !== 'explore') return
+
+    if (elapsedTime >= ambient.nextFireAt) {
+        ambient.nextFireAt = elapsedTime + randomBetween(AMBIENT_FIRE_EVERY)
+        const working = colleagues.filter((desk) => desk.userData.state === 'on').length
+        if (working <= AMBIENT_RELIGHT_WHEN_LEFT) {
+            resetOffice()
+            sound.buzz()
+        } else {
+            fireRandomColleague()
+        }
+    }
+
+    if (elapsedTime >= ambient.nextCardAt) {
+        ambient.nextCardAt = elapsedTime + randomBetween(AMBIENT_CARD_EVERY)
+        // Только настоящие новости: серый шум без игры ничего не объясняет
+        spawnCard(pickRandom(newsFeed), elapsedTime)
+        flyingCards[flyingCards.length - 1].duration = AMBIENT_CARD_FLIGHT
+    }
+
+    if (elapsedTime >= ambient.nextApplicationAt) {
+        ambient.nextApplicationAt = elapsedTime + AMBIENT_APPLICATION_EVERY
+        applications.sent += 1 + Math.floor(Math.random() * 3)
+        if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
+        drawJobScreen()
+    }
+}
 
 // Таймеры истории отсчитываем от момента, когда смена реально началась (после обучения), а не от загрузки страницы
 const beginShift = () => {
@@ -2883,6 +3096,8 @@ const tick = () => {
     updateFiringLabels(elapsedTime)
     updateGhosts(elapsedTime)
     updateBursts(elapsedTime)
+    updateAmbient(elapsedTime)
+    updateCodeScreen(elapsedTime, deltaTime)
     updateNews(elapsedTime)
     updateApplications(elapsedTime)
     updateLampHold(deltaTime)
