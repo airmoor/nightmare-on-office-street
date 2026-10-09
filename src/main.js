@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import GUI from 'lil-gui'
-import { createCardTexture, createGlowLabelTexture, createScreenTexture } from './canvasText.js'
+import { createCardTexture, createGlowLabelTexture, createScreenTexture, monoFontReady } from './canvasText.js'
 import { createSound } from './sound.js'
 
 /**
@@ -1150,7 +1150,7 @@ const drawJobScreen = () => {
         context.font = `500 22px ${font}`
         context.fillText('interviews', 302, 160)
 
-        // Моноширинный шире Inter: режем фразу раньше, чтобы влезла в экран
+        // Моноширинный шрифт широкий: режем фразу, чтобы влезла в экран
         context.fillStyle = '#c9d6dc'
         context.font = `italic 400 20px ${font}`
         const reply = applications.lastReply.length > 36
@@ -1161,7 +1161,7 @@ const drawJobScreen = () => {
 }
 drawJobScreen()
 // Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
-document.fonts?.ready.then(drawJobScreen)
+monoFontReady.then(drawJobScreen)
 
 const updateApplications = (elapsedTime) => {
     if (experience.phase !== 'running' || isTutorial() || elapsedTime < applications.nextAt) return
@@ -2012,20 +2012,35 @@ const addDismissScore = (position) => {
  * Пульсирующая надпись над монитором героя: показывает, что монитор можно зажать.
  * Видна, пока игрок ни разу не поработал, и снова — когда Performance проседает
  */
-const holdHintTexture = createGlowLabelTexture('HOLD TO WORK', '#d4f1ff')
-const holdHint = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-        map: holdHintTexture.texture,
-        transparent: true,
-        depthTest: false, // поверх всего, чтобы герой и карточки её не закрывали
-        fog: false,
-        opacity: 0,
-    })
-)
+// Светящаяся подсказка-спрайт. Текстура создаётся сразу и ещё раз, когда загрузится IBM Plex Mono:
+// иначе при первом заходе надпись так и осталась бы запасным шрифтом и с неверной шириной
+const HINT_HEIGHT = 0.24
+const createHintSprite = (text, color, materialOptions = {}) => {
+    const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ transparent: true, fog: false, opacity: 0, ...materialOptions })
+    )
+    let aspect = 1
+    const updateScale = () => {
+        const height = HINT_HEIGHT * getSpriteScale()
+        sprite.scale.set(height * aspect, height, 1)
+    }
+    const render = () => {
+        const label = createGlowLabelTexture(text, color)
+        sprite.material.map?.dispose()
+        sprite.material.map = label.texture
+        sprite.material.needsUpdate = true
+        aspect = label.aspect
+        updateScale()
+    }
+    render()
+    monoFontReady.then(render)
+    spriteScaleUpdaters.push(updateScale)
+    return sprite
+}
+
+// depthTest: false — поверх всего, чтобы герой и карточки её не закрывали
+const holdHint = createHintSprite('HOLD TO WORK', '#d4f1ff', { depthTest: false })
 holdHint.renderOrder = 10
-const updateHoldHintScale = () => holdHint.scale.set(0.24 * getSpriteScale() * holdHintTexture.aspect, 0.24 * getSpriteScale(), 1)
-updateHoldHintScale()
-spriteScaleUpdaters.push(updateHoldHintScale)
 const holdHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 1.62, -0.22))
 holdHint.position.copy(holdHintBase)
 scene.add(holdHint)
@@ -2350,14 +2365,8 @@ const updateLampHold = (deltaTime) => {
  * Тусклая надпись у лампы героя — тихий намёк, что можно просто уйти
  */
 // Подсказка честно говорит, что будет: ночь закончится. Но не запрещает — это тайная концовка
-const lampHintTexture = createGlowLabelTexture('hold to switch off · go home', '#ffd9a0')
-const lampHint = new THREE.Sprite(
-    // fog: false — иначе туман съедает надпись почти целиком
-    new THREE.SpriteMaterial({ map: lampHintTexture.texture, transparent: true, depthWrite: false, fog: false, opacity: 0 })
-)
-const updateLampHintScale = () => lampHint.scale.set(0.24 * getSpriteScale() * lampHintTexture.aspect, 0.24 * getSpriteScale(), 1)
-updateLampHintScale()
-spriteScaleUpdaters.push(updateLampHintScale)
+// fog: false (внутри createHintSprite) — иначе туман съедает надпись почти целиком
+const lampHint = createHintSprite('hold to switch off · go home', '#ffd9a0', { depthWrite: false })
 const lampHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 3.05, 0))
 lampHint.position.copy(lampHintBase)
 scene.add(lampHint)
