@@ -1803,7 +1803,6 @@ const muteLabel = document.querySelector('[data-mute-label]')
 const setMuted = (muted) => {
     sound.setMuted(muted)
     ui.mute.classList.toggle('is-muted', muted)
-    ui.mute.setAttribute('aria-pressed', String(muted))
     muteLabel.textContent = muted ? 'Sound off' : 'Sound on'
     try {
         localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0')
