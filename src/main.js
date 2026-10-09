@@ -2998,7 +2998,8 @@ const saveLevel = (key) => {
 }
 
 const applyLevel = (key) => {
-    currentLevelKey = levels[key] ? key : 'junior'
+    // hasOwn, а не levels[key]: из localStorage может прийти, например, 'toString'
+    currentLevelKey = Object.hasOwn(levels, key) ? key : 'junior'
     currentLevel = levels[currentLevelKey]
 
     Object.assign(game, getLevelParams('game', currentLevel.tier))
