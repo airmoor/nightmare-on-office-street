@@ -2000,7 +2000,8 @@ const addDismissScore = (position) => {
     showPopup(position, multiplier > 1 ? `+${points} ×${multiplier}` : `+${points}`)
 
     // Множитель вырос — коротко «подпрыгиваем» надписью комбо
-    if (game.combo % game.comboStep === 0 && multiplier <= game.maxMultiplier) {
+    // После потолка ×maxMultiplier множитель больше не растёт — и не подпрыгивает
+    if (game.combo % game.comboStep === 0 && game.combo / game.comboStep < game.maxMultiplier) {
         ui.combo.classList.remove('is-bump')
         void ui.combo.offsetWidth // трюк, чтобы CSS-анимация запустилась заново
         ui.combo.classList.add('is-bump')
