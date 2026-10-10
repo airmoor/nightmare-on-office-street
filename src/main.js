@@ -2718,6 +2718,8 @@ const showOutro = (kind) => {
 
     const showSummary = () => {
         clearTimeout(summaryTimeout)
+        ui.outro.removeEventListener('pointerdown', showSummary)
+        window.removeEventListener('keydown', showSummary)
         if (!ui.outroBody.hidden) return
         ui.outro.classList.add('is-summary')
         ui.outroBody.hidden = false
