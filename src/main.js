@@ -27,6 +27,29 @@ const params = {
 }
 
 const sound = createSound()
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// Свои часы вместо THREE.Clock: копим только ограниченный шаг кадра.
+// Пока вкладка скрыта, кадров нет — и игровое время стоит, а не убегает вперёд
+const MAX_FRAME_STEP = 0.1
+const clock = (() => {
+    let elapsed = 0
+    let last = performance.now()
+    return {
+        update() {
+            const now = performance.now()
+            elapsed += Math.min((now - last) / 1000, MAX_FRAME_STEP)
+            last = now
+        },
+        getElapsedTime: () => elapsed,
+    }
+})()
+
+// Небольшие общие хелперы
+const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
+const randomBetween = ([min, max]) => min + Math.random() * (max - min)
+// Детерминированный псевдошум 0..1: одно и то же n — одно и то же значение (мигание ламп)
+const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
 
 scene.background = new THREE.Color(params.background)
 scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
@@ -548,8 +571,6 @@ const fireColleague = (desk) => {
     sound.buzz()
 }
 
-const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
-
 const fireRandomColleague = () => {
     const working = colleagues.filter((desk) => desk.userData.state === 'on')
     if (working.length === 0) return null
@@ -628,9 +649,7 @@ const updateColleagues = (elapsedTime) => {
         const t = elapsedTime - desk.userData.flickerStart
         if (t < FLICKER_DURATION) {
             // Псевдослучайное мигание ~12 раз в секунду
-            const step = Math.floor(t * 12)
-            const noise = Math.abs(Math.sin(step * 12.9898) * 43758.5453) % 1
-            setDeskPower(desk, noise > 0.45 ? 1 : 0.1)
+            setDeskPower(desk, hashNoise(Math.floor(t * 12)) > 0.45 ? 1 : 0.1)
         } else {
             setDeskPower(desk, 0)
             desk.userData.person.visible = false
@@ -1222,7 +1241,8 @@ scene.add(camera)
 const controls = new OrbitControls(camera, canvas)
 controls.target.copy(heroDesk.position).add(new THREE.Vector3(0, 0.8, 0))
 controls.enableDamping = true
-controls.maxPolarAngle = Math.PI * 0.45 // не даём заглянуть под пол (см. MAX_POLAR_ANGLE)
+const MAX_POLAR_ANGLE = Math.PI * 0.45 // не даём заглянуть под пол
+controls.maxPolarAngle = MAX_POLAR_ANGLE
 controls.minDistance = 3
 controls.maxDistance = 22
 
@@ -1238,7 +1258,6 @@ applyCameraDistance()
  * не приблизить и не уехать панорамой — случайный свайп мимо карточки иначе ломает весь кадр.
  * Свободная камера — в режиме Look around (без игры) и на финальном экране
  */
-const MAX_POLAR_ANGLE = Math.PI * 0.45 // не даём заглянуть под пол
 const gameplayView = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target))
 const GAMEPLAY_ROTATE_RANGE = THREE.MathUtils.degToRad(15) // насколько можно повернуть офис влево-вправо
 const GAMEPLAY_TILT_RANGE = THREE.MathUtils.degToRad(8) // и вверх-вниз
@@ -1593,7 +1612,6 @@ const AMBIENT_CARD_FLIGHT = 10 // уведомления летят медлен
 const AMBIENT_APPLICATION_EVERY = 2.5
 const AMBIENT_RELIGHT_WHEN_LEFT = 5 // сколько коллег должно остаться, чтобы офис «перезапустился»
 const ambient = { nextFireAt: 0, nextCardAt: 0, nextApplicationAt: 0 }
-const randomBetween = ([min, max]) => min + Math.random() * (max - min)
 
 const startAmbient = (elapsedTime) => {
     ambient.nextFireAt = elapsedTime + 2.5
@@ -1738,7 +1756,6 @@ window.addEventListener('pointerdown', () => {
  * Когда почти все погасли, кто-то щёлкает рубильником, и всё начинается заново.
  * Меняем только яркость (setDeskPower), а не state: смена стартует с полностью освещённым офисом
  */
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const introLights = { nextAt: 2.5, flickering: null, flickerStart: 0, dark: new Set(), relightAt: 0, minute: -1 }
 const introClock = document.querySelector('[data-intro-clock]')
 
@@ -1894,8 +1911,6 @@ const endShift = () => {
 
 ui.goHome.addEventListener('click', () => startEnding('calm'))
 
-const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
-
 /**
  * Tension
  * Чем больше уволено, тем гуще туман, тем чаще мигает лампа героя и сильнее дрожит камера
@@ -1939,6 +1954,8 @@ const updateTension = (elapsedTime) => {
  * Performance растёт, пока держишь монитор, и всё время падает сама (к концу смены — быстрее)
  * Stress растёт, когда уведомление долетает до головы, и снижается, когда его закрываешь
  */
+const DANGER_LEVEL = 25 // ниже (или выше — для Stress) этой отметки шкала краснеет
+
 const game = {
     performance: 100,
     stress: 0,
@@ -2059,8 +2076,6 @@ const updateHoldHint = (elapsedTime) => {
     // Экран тоже мерцает зелёным — подсказываем, куда нажимать
     if (needsHint) heroDesk.userData.screen.material.color.lerp(colors.screenWork, 0.15 + 0.35 * pulse)
 }
-
-const DANGER_LEVEL = 25
 
 const gameFolder = gui.addFolder('Game')
 gameFolder.add(game, 'performance').min(0).max(100).step(1).listen()
@@ -3059,22 +3074,6 @@ for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => start
 /**
  * Animate
  */
-// Свои часы вместо THREE.Clock: копим только ограниченный шаг кадра.
-// Пока вкладка скрыта, кадров нет — и игровое время стоит, а не убегает вперёд
-const MAX_FRAME_STEP = 0.1
-const clock = (() => {
-    let elapsed = 0
-    let last = performance.now()
-    return {
-        update() {
-            const now = performance.now()
-            elapsed += Math.min((now - last) / 1000, MAX_FRAME_STEP)
-            last = now
-        },
-        getElapsedTime: () => elapsed,
-    }
-})()
-
 let previousTime = 0
 
 // На телефоне текст интро занимает нижнюю половину экрана — сдвигаем кадр, чтобы офис оказался сверху.
