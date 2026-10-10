@@ -1006,7 +1006,9 @@ const randomSpawnPoint = () => {
     )
 }
 
-const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
+// from — откуда вылетает (по умолчанию случайная точка в темноте), duration — фиксированное время полёта.
+// Возвращает созданную карточку
+const spawnCard = (item, elapsedTime, { from = randomSpawnPoint(), duration: fixedDuration } = {}) => {
     const { texture, aspect } = getCardTexture(item)
     // depthTest: false — карточку не закрывают лампы, провода и призраки: её надо успеть прочитать и кликнуть.
     // fog: false — дальние карточки не тонут в тумане. Порядок: надписи (5) → карточки (6) → HOLD TO WORK (10)
@@ -1022,9 +1024,9 @@ const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
     // Длительность полёта зависит от расстояния: карточка, родившаяся рядом, долетает быстрее
     const baseDuration = THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, getNightDifficulty())
     const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2 * getSpawnScale()
-    const duration = Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
+    const duration = fixedDuration ?? Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
 
-    flyingCards.push({
+    const card = {
         item,
         maxOpacity: item.noise ? NOISE_OPACITY : 1,
         sprite,
@@ -1033,8 +1035,10 @@ const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
         start: elapsedTime,
         duration,
         dismissedAt: null,
-    })
+    }
+    flyingCards.push(card)
     sound.ping()
+    return card
 }
 
 const removeCard = (index) => {
@@ -1065,7 +1069,7 @@ const dismissCard = (card) => {
         const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
             .normalize()
             .multiplyScalar(0.8)
-        spawnCard(nextFeedItem(), elapsedTime, card.sprite.position.clone().add(offset))
+        spawnCard(nextFeedItem(), elapsedTime, { from: card.sprite.position.clone().add(offset) })
     }
 }
 
@@ -1182,13 +1186,17 @@ drawJobScreen()
 // Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
 monoFontReady.then(drawJobScreen)
 
-const updateApplications = (elapsedTime) => {
-    if (experience.phase !== 'running' || isTutorial() || elapsedTime < applications.nextAt) return
-    applications.nextAt = elapsedTime + applications.interval
-
+// Ещё 1–3 отклика, и иногда — новый отказ
+const sendApplications = () => {
     applications.sent += 1 + Math.floor(Math.random() * 3)
     if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
     drawJobScreen()
+}
+
+const updateApplications = (elapsedTime) => {
+    if (experience.phase !== 'running' || isTutorial() || elapsedTime < applications.nextAt) return
+    applications.nextAt = elapsedTime + applications.interval
+    sendApplications()
 }
 
 /**
@@ -1636,15 +1644,12 @@ const updateAmbient = (elapsedTime) => {
     if (elapsedTime >= ambient.nextCardAt) {
         ambient.nextCardAt = elapsedTime + randomBetween(AMBIENT_CARD_EVERY)
         // Только настоящие новости: серый шум без игры ничего не объясняет
-        spawnCard(pickRandom(newsFeed), elapsedTime)
-        flyingCards[flyingCards.length - 1].duration = AMBIENT_CARD_FLIGHT
+        spawnCard(pickRandom(newsFeed), elapsedTime, { duration: AMBIENT_CARD_FLIGHT })
     }
 
     if (elapsedTime >= ambient.nextApplicationAt) {
         ambient.nextApplicationAt = elapsedTime + AMBIENT_APPLICATION_EVERY
-        applications.sent += 1 + Math.floor(Math.random() * 3)
-        if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
-        drawJobScreen()
+        sendApplications()
     }
 }
 
@@ -2229,9 +2234,7 @@ const tutorialSpawnPoint = () => {
 }
 
 const spawnTutorialCard = (elapsedTime) => {
-    spawnCard(newsFeed[1], elapsedTime, tutorialSpawnPoint())
-    tutorial.card = flyingCards[flyingCards.length - 1]
-    tutorial.card.duration = TUTORIAL_CARD_DURATION
+    tutorial.card = spawnCard(newsFeed[1], elapsedTime, { from: tutorialSpawnPoint(), duration: TUTORIAL_CARD_DURATION })
 }
 
 const finishTutorial = () => {
