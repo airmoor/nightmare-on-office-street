@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import GUI from 'lil-gui'
-import { createCardTexture, createGlowLabelTexture, createScreenTexture } from './canvasText.js'
+import { createCardTexture, createGlowLabelTexture, createScreenTexture, monoFontReady } from './canvasText.js'
 import { createSound } from './sound.js'
 
 /**
@@ -27,6 +27,29 @@ const params = {
 }
 
 const sound = createSound()
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// Свои часы вместо THREE.Clock: копим только ограниченный шаг кадра.
+// Пока вкладка скрыта, кадров нет — и игровое время стоит, а не убегает вперёд
+const MAX_FRAME_STEP = 0.1
+const clock = (() => {
+    let elapsed = 0
+    let last = performance.now()
+    return {
+        update() {
+            const now = performance.now()
+            elapsed += Math.min((now - last) / 1000, MAX_FRAME_STEP)
+            last = now
+        },
+        getElapsedTime: () => elapsed,
+    }
+})()
+
+// Небольшие общие хелперы
+const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
+const randomBetween = ([min, max]) => min + Math.random() * (max - min)
+// Детерминированный псевдошум 0..1: одно и то же n — одно и то же значение (мигание ламп)
+const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
 
 scene.background = new THREE.Color(params.background)
 scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
@@ -38,17 +61,17 @@ scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
 // Это «фейковый» свет: выглядит как лампа, но почти ничего не стоит для GPU
 const createLightPoolTexture = () => {
     const size = 256
-    const canvas = document.createElement('canvas')
-    canvas.width = size
-    canvas.height = size
-    const context = canvas.getContext('2d')
+    const poolCanvas = document.createElement('canvas')
+    poolCanvas.width = size
+    poolCanvas.height = size
+    const context = poolCanvas.getContext('2d')
     const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
     gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.35)')
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
     context.fillStyle = gradient
     context.fillRect(0, 0, size, size)
-    const texture = new THREE.CanvasTexture(canvas)
+    const texture = new THREE.CanvasTexture(poolCanvas)
     texture.colorSpace = THREE.SRGBColorSpace
     return texture
 }
@@ -548,8 +571,6 @@ const fireColleague = (desk) => {
     sound.buzz()
 }
 
-const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
-
 const fireRandomColleague = () => {
     const working = colleagues.filter((desk) => desk.userData.state === 'on')
     if (working.length === 0) return null
@@ -628,9 +649,7 @@ const updateColleagues = (elapsedTime) => {
         const t = elapsedTime - desk.userData.flickerStart
         if (t < FLICKER_DURATION) {
             // Псевдослучайное мигание ~12 раз в секунду
-            const step = Math.floor(t * 12)
-            const noise = Math.abs(Math.sin(step * 12.9898) * 43758.5453) % 1
-            setDeskPower(desk, noise > 0.45 ? 1 : 0.1)
+            setDeskPower(desk, hashNoise(Math.floor(t * 12)) > 0.45 ? 1 : 0.1)
         } else {
             setDeskPower(desk, 0)
             desk.userData.person.visible = false
@@ -979,7 +998,7 @@ const CAMERA_SIDE_GAP = THREE.MathUtils.degToRad(50)
 const randomSpawnPoint = () => {
     const cameraAngle = Math.atan2(camera.position.z - heroHead.z, camera.position.x - heroHead.x)
     const angle = cameraAngle + CAMERA_SIDE_GAP + Math.random() * (Math.PI * 2 - CAMERA_SIDE_GAP * 2)
-    const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random()) * getSpawnScale()
+    const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random()) * SPAWN_SCALE
     return new THREE.Vector3(
         heroHead.x + Math.cos(angle) * radius,
         2.5 + Math.random() * 2.5,
@@ -987,7 +1006,9 @@ const randomSpawnPoint = () => {
     )
 }
 
-const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
+// from — откуда вылетает (по умолчанию случайная точка в темноте), duration — фиксированное время полёта.
+// Возвращает созданную карточку
+const spawnCard = (item, elapsedTime, { from = randomSpawnPoint(), duration: fixedDuration } = {}) => {
     const { texture, aspect } = getCardTexture(item)
     // depthTest: false — карточку не закрывают лампы, провода и призраки: её надо успеть прочитать и кликнуть.
     // fog: false — дальние карточки не тонут в тумане. Порядок: надписи (5) → карточки (6) → HOLD TO WORK (10)
@@ -1002,10 +1023,10 @@ const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
 
     // Длительность полёта зависит от расстояния: карточка, родившаяся рядом, долетает быстрее
     const baseDuration = THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, getNightDifficulty())
-    const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2 * getSpawnScale()
-    const duration = Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
+    const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2 * SPAWN_SCALE
+    const duration = fixedDuration ?? Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
 
-    flyingCards.push({
+    const card = {
         item,
         maxOpacity: item.noise ? NOISE_OPACITY : 1,
         sprite,
@@ -1014,8 +1035,10 @@ const spawnCard = (item, elapsedTime, from = randomSpawnPoint()) => {
         start: elapsedTime,
         duration,
         dismissedAt: null,
-    })
+    }
+    flyingCards.push(card)
     sound.ping()
+    return card
 }
 
 const removeCard = (index) => {
@@ -1046,7 +1069,7 @@ const dismissCard = (card) => {
         const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
             .normalize()
             .multiplyScalar(0.8)
-        spawnCard(nextFeedItem(), elapsedTime, card.sprite.position.clone().add(offset))
+        spawnCard(nextFeedItem(), elapsedTime, { from: card.sprite.position.clone().add(offset) })
     }
 }
 
@@ -1150,7 +1173,7 @@ const drawJobScreen = () => {
         context.font = `500 22px ${font}`
         context.fillText('interviews', 302, 160)
 
-        // Моноширинный шире Inter: режем фразу раньше, чтобы влезла в экран
+        // Моноширинный шрифт широкий: режем фразу, чтобы влезла в экран
         context.fillStyle = '#c9d6dc'
         context.font = `italic 400 20px ${font}`
         const reply = applications.lastReply.length > 36
@@ -1161,15 +1184,19 @@ const drawJobScreen = () => {
 }
 drawJobScreen()
 // Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
-document.fonts?.ready.then(drawJobScreen)
+monoFontReady.then(drawJobScreen)
+
+// Ещё 1–3 отклика, и иногда — новый отказ
+const sendApplications = () => {
+    applications.sent += 1 + Math.floor(Math.random() * 3)
+    if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
+    drawJobScreen()
+}
 
 const updateApplications = (elapsedTime) => {
     if (experience.phase !== 'running' || isTutorial() || elapsedTime < applications.nextAt) return
     applications.nextAt = elapsedTime + applications.interval
-
-    applications.sent += 1 + Math.floor(Math.random() * 3)
-    if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
-    drawJobScreen()
+    sendApplications()
 }
 
 /**
@@ -1212,8 +1239,9 @@ const CAMERA_DISTANCE_LANDSCAPE = 9
 const getSpriteScale = () => (isPortrait() ? 1.3 : 1)
 // Карточкам — ещё крупнее: на них текст, и его надо успеть прочитать на лету
 const getCardScale = () => (isPortrait() ? 1.5 : 1)
-// Карточки на телефоне рождаются ближе к герою — иначе половину полёта они за краем узкого экрана
-const getSpawnScale = () => 0.75
+// Карточки рождаются ближе к герою, чем край офиса: иначе на узком экране половину полёта они за кадром.
+// Одинаково для любой ориентации — так темп игры не зависит от того, как держат телефон
+const SPAWN_SCALE = 0.75
 
 const camera = new THREE.PerspectiveCamera(getCameraFov(), sizes.width / sizes.height, 0.1, 100)
 camera.position.set(7, 7.5, 11)
@@ -1222,7 +1250,8 @@ scene.add(camera)
 const controls = new OrbitControls(camera, canvas)
 controls.target.copy(heroDesk.position).add(new THREE.Vector3(0, 0.8, 0))
 controls.enableDamping = true
-controls.maxPolarAngle = Math.PI * 0.45 // не даём заглянуть под пол (см. MAX_POLAR_ANGLE)
+const MAX_POLAR_ANGLE = Math.PI * 0.45 // не даём заглянуть под пол
+controls.maxPolarAngle = MAX_POLAR_ANGLE
 controls.minDistance = 3
 controls.maxDistance = 22
 
@@ -1238,7 +1267,6 @@ applyCameraDistance()
  * не приблизить и не уехать панорамой — случайный свайп мимо карточки иначе ломает весь кадр.
  * Свободная камера — в режиме Look around (без игры) и на финальном экране
  */
-const MAX_POLAR_ANGLE = Math.PI * 0.45 // не даём заглянуть под пол
 const gameplayView = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target))
 const GAMEPLAY_ROTATE_RANGE = THREE.MathUtils.degToRad(15) // насколько можно повернуть офис влево-вправо
 const GAMEPLAY_TILT_RANGE = THREE.MathUtils.degToRad(8) // и вверх-вниз
@@ -1593,7 +1621,6 @@ const AMBIENT_CARD_FLIGHT = 10 // уведомления летят медлен
 const AMBIENT_APPLICATION_EVERY = 2.5
 const AMBIENT_RELIGHT_WHEN_LEFT = 5 // сколько коллег должно остаться, чтобы офис «перезапустился»
 const ambient = { nextFireAt: 0, nextCardAt: 0, nextApplicationAt: 0 }
-const randomBetween = ([min, max]) => min + Math.random() * (max - min)
 
 const startAmbient = (elapsedTime) => {
     ambient.nextFireAt = elapsedTime + 2.5
@@ -1618,15 +1645,12 @@ const updateAmbient = (elapsedTime) => {
     if (elapsedTime >= ambient.nextCardAt) {
         ambient.nextCardAt = elapsedTime + randomBetween(AMBIENT_CARD_EVERY)
         // Только настоящие новости: серый шум без игры ничего не объясняет
-        spawnCard(pickRandom(newsFeed), elapsedTime)
-        flyingCards[flyingCards.length - 1].duration = AMBIENT_CARD_FLIGHT
+        spawnCard(pickRandom(newsFeed), elapsedTime, { duration: AMBIENT_CARD_FLIGHT })
     }
 
     if (elapsedTime >= ambient.nextApplicationAt) {
         ambient.nextApplicationAt = elapsedTime + AMBIENT_APPLICATION_EVERY
-        applications.sent += 1 + Math.floor(Math.random() * 3)
-        if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
-        drawJobScreen()
+        sendApplications()
     }
 }
 
@@ -1738,7 +1762,6 @@ window.addEventListener('pointerdown', () => {
  * Когда почти все погасли, кто-то щёлкает рубильником, и всё начинается заново.
  * Меняем только яркость (setDeskPower), а не state: смена стартует с полностью освещённым офисом
  */
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 const introLights = { nextAt: 2.5, flickering: null, flickerStart: 0, dark: new Set(), relightAt: 0, minute: -1 }
 const introClock = document.querySelector('[data-intro-clock]')
 
@@ -1803,7 +1826,6 @@ const muteLabel = document.querySelector('[data-mute-label]')
 const setMuted = (muted) => {
     sound.setMuted(muted)
     ui.mute.classList.toggle('is-muted', muted)
-    ui.mute.setAttribute('aria-pressed', String(muted))
     muteLabel.textContent = muted ? 'Sound off' : 'Sound on'
     try {
         localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0')
@@ -1895,8 +1917,6 @@ const endShift = () => {
 
 ui.goHome.addEventListener('click', () => startEnding('calm'))
 
-const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
-
 /**
  * Tension
  * Чем больше уволено, тем гуще туман, тем чаще мигает лампа героя и сильнее дрожит камера
@@ -1940,6 +1960,8 @@ const updateTension = (elapsedTime) => {
  * Performance растёт, пока держишь монитор, и всё время падает сама (к концу смены — быстрее)
  * Stress растёт, когда уведомление долетает до головы, и снижается, когда его закрываешь
  */
+const DANGER_LEVEL = 25 // ниже (или выше — для Stress) этой отметки шкала краснеет
+
 const game = {
     performance: 100,
     stress: 0,
@@ -2000,7 +2022,8 @@ const addDismissScore = (position) => {
     showPopup(position, multiplier > 1 ? `+${points} ×${multiplier}` : `+${points}`)
 
     // Множитель вырос — коротко «подпрыгиваем» надписью комбо
-    if (game.combo % game.comboStep === 0 && multiplier <= game.maxMultiplier) {
+    // После потолка ×maxMultiplier множитель больше не растёт — и не подпрыгивает
+    if (game.combo % game.comboStep === 0 && game.combo / game.comboStep < game.maxMultiplier) {
         ui.combo.classList.remove('is-bump')
         void ui.combo.offsetWidth // трюк, чтобы CSS-анимация запустилась заново
         ui.combo.classList.add('is-bump')
@@ -2012,20 +2035,35 @@ const addDismissScore = (position) => {
  * Пульсирующая надпись над монитором героя: показывает, что монитор можно зажать.
  * Видна, пока игрок ни разу не поработал, и снова — когда Performance проседает
  */
-const holdHintTexture = createGlowLabelTexture('HOLD TO WORK', '#d4f1ff')
-const holdHint = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-        map: holdHintTexture.texture,
-        transparent: true,
-        depthTest: false, // поверх всего, чтобы герой и карточки её не закрывали
-        fog: false,
-        opacity: 0,
-    })
-)
+// Светящаяся подсказка-спрайт. Текстура создаётся сразу и ещё раз, когда загрузится IBM Plex Mono:
+// иначе при первом заходе надпись так и осталась бы запасным шрифтом и с неверной шириной
+const HINT_HEIGHT = 0.24
+const createHintSprite = (text, color, materialOptions = {}) => {
+    const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ transparent: true, fog: false, opacity: 0, ...materialOptions })
+    )
+    let aspect = 1
+    const updateScale = () => {
+        const height = HINT_HEIGHT * getSpriteScale()
+        sprite.scale.set(height * aspect, height, 1)
+    }
+    const render = () => {
+        const label = createGlowLabelTexture(text, color)
+        sprite.material.map?.dispose()
+        sprite.material.map = label.texture
+        sprite.material.needsUpdate = true
+        aspect = label.aspect
+        updateScale()
+    }
+    render()
+    monoFontReady.then(render)
+    spriteScaleUpdaters.push(updateScale)
+    return sprite
+}
+
+// depthTest: false — поверх всего, чтобы герой и карточки её не закрывали
+const holdHint = createHintSprite('HOLD TO WORK', '#d4f1ff', { depthTest: false })
 holdHint.renderOrder = 10
-const updateHoldHintScale = () => holdHint.scale.set(0.24 * getSpriteScale() * holdHintTexture.aspect, 0.24 * getSpriteScale(), 1)
-updateHoldHintScale()
-spriteScaleUpdaters.push(updateHoldHintScale)
 const holdHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 1.62, -0.22))
 holdHint.position.copy(holdHintBase)
 scene.add(holdHint)
@@ -2044,8 +2082,6 @@ const updateHoldHint = (elapsedTime) => {
     // Экран тоже мерцает зелёным — подсказываем, куда нажимать
     if (needsHint) heroDesk.userData.screen.material.color.lerp(colors.screenWork, 0.15 + 0.35 * pulse)
 }
-
-const DANGER_LEVEL = 25
 
 const gameFolder = gui.addFolder('Game')
 gameFolder.add(game, 'performance').min(0).max(100).step(1).listen()
@@ -2080,9 +2116,41 @@ const onCardHit = () => {
     if (game.stress >= 100) startEnding('burnout')
 }
 
+// HUD обновляется каждый кадр — трогаем DOM, только когда значение правда изменилось
+const hud = {
+    score: null,
+    multiplier: null,
+    meters: new Map(), // meter → { fill, width, isDanger }
+}
+
 const setMeter = (meter, value, isDanger) => {
-    meter.querySelector('[data-meter-fill]').style.width = `${value}%`
-    meter.classList.toggle('is-danger', isDanger)
+    if (!hud.meters.has(meter)) hud.meters.set(meter, { fill: meter.querySelector('[data-meter-fill]') })
+    const state = hud.meters.get(meter)
+    const width = `${value.toFixed(1)}%`
+    if (state.width !== width) {
+        state.fill.style.width = width
+        state.width = width
+    }
+    if (state.isDanger !== isDanger) {
+        meter.classList.toggle('is-danger', isDanger)
+        state.isDanger = isDanger
+    }
+}
+
+const updateHud = () => {
+    const score = Math.floor(game.score)
+    if (score !== hud.score) {
+        ui.score.textContent = score
+        hud.score = score
+    }
+    const multiplier = getMultiplier()
+    if (multiplier !== hud.multiplier) {
+        // Слово combo на телефоне прячет CSS: с четырёхзначным счётом оно переносится и HUD прыгает
+        ui.combo.innerHTML = multiplier > 1 ? `×${multiplier}<span class="hud-combo-word"> combo</span>` : ''
+        hud.multiplier = multiplier
+    }
+    setMeter(ui.performance, game.performance, game.performance < DANGER_LEVEL)
+    setMeter(ui.stress, game.stress, game.stress > 100 - DANGER_LEVEL)
 }
 
 const updateGame = (elapsedTime, deltaTime) => {
@@ -2130,13 +2198,7 @@ const updateGame = (elapsedTime, deltaTime) => {
         person.position.y = 0
     }
 
-    ui.score.textContent = Math.floor(game.score)
-    const multiplier = getMultiplier()
-    // Слово combo на телефоне прячет CSS: с четырёхзначным счётом оно переносится и HUD прыгает
-    ui.combo.innerHTML = multiplier > 1 ? `×${multiplier}<span class="hud-combo-word"> combo</span>` : ''
-
-    setMeter(ui.performance, game.performance, game.performance < DANGER_LEVEL)
-    setMeter(ui.stress, game.stress, game.stress > 100 - DANGER_LEVEL)
+    updateHud()
     ui.vignette.style.opacity = Math.min(1, (game.stress / 100) * params.vignetteStrength + game.hitFlash * 0.3)
 
     if (game.performance <= 0) startEnding(isFrozen(elapsedTime) ? 'frozen' : 'fired')
@@ -2199,9 +2261,7 @@ const tutorialSpawnPoint = () => {
 }
 
 const spawnTutorialCard = (elapsedTime) => {
-    spawnCard(newsFeed[1], elapsedTime, tutorialSpawnPoint())
-    tutorial.card = flyingCards[flyingCards.length - 1]
-    tutorial.card.duration = TUTORIAL_CARD_DURATION
+    tutorial.card = spawnCard(newsFeed[1], elapsedTime, { from: tutorialSpawnPoint(), duration: TUTORIAL_CARD_DURATION })
 }
 
 const finishTutorial = () => {
@@ -2273,8 +2333,8 @@ const placeCoach = (anchor) => {
     // Пузырь не даём увезти за край экрана, а хвостик всё равно смотрит на цель
     const halfWidth = ui.coachText.offsetWidth / 2
     const margin = 16
-    const shift = THREE.MathUtils.clamp(x, margin + halfWidth, sizes.width - margin - halfWidth) - x
-    ui.coach.style.setProperty('--shift', `${shift}px`)
+    const offset = THREE.MathUtils.clamp(x, margin + halfWidth, sizes.width - margin - halfWidth) - x
+    ui.coach.style.setProperty('--shift', `${offset}px`)
 }
 
 /**
@@ -2350,14 +2410,8 @@ const updateLampHold = (deltaTime) => {
  * Тусклая надпись у лампы героя — тихий намёк, что можно просто уйти
  */
 // Подсказка честно говорит, что будет: ночь закончится. Но не запрещает — это тайная концовка
-const lampHintTexture = createGlowLabelTexture('hold to switch off · go home', '#ffd9a0')
-const lampHint = new THREE.Sprite(
-    // fog: false — иначе туман съедает надпись почти целиком
-    new THREE.SpriteMaterial({ map: lampHintTexture.texture, transparent: true, depthWrite: false, fog: false, opacity: 0 })
-)
-const updateLampHintScale = () => lampHint.scale.set(0.24 * getSpriteScale() * lampHintTexture.aspect, 0.24 * getSpriteScale(), 1)
-updateLampHintScale()
-spriteScaleUpdaters.push(updateLampHintScale)
+// fog: false (внутри createHintSprite) — иначе туман съедает надпись почти целиком
+const lampHint = createHintSprite('hold to switch off · go home', '#ffd9a0', { depthWrite: false })
 const lampHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 3.05, 0))
 lampHint.position.copy(lampHintBase)
 scene.add(lampHint)
@@ -2630,13 +2684,13 @@ const showOutro = (kind) => {
     const stats = experience.endingStats
 
     // Такт 1: последнее уведомление — в сцене
-    const story = ending.story(stats)
+    const storyCard = ending.story(stats)
     ui.outro.style.setProperty('--accent', ending.accent)
-    ui.outroStorySender.textContent = story.sender
-    ui.outroStoryTime.textContent = story.time ?? stats.time
-    ui.outroStoryTitle.textContent = story.title
-    setText(ui.outroStoryMeta, story.meta)
-    setText(ui.outroStoryText, story.text)
+    ui.outroStorySender.textContent = storyCard.sender
+    ui.outroStoryTime.textContent = storyCard.time ?? stats.time
+    ui.outroStoryTitle.textContent = storyCard.title
+    setText(ui.outroStoryMeta, storyCard.meta)
+    setText(ui.outroStoryText, storyCard.text)
 
     // Такт 2: итоги
     ui.outroTitle.innerHTML = ending.title(stats)
@@ -2709,6 +2763,8 @@ const showOutro = (kind) => {
 
     const showSummary = () => {
         clearTimeout(summaryTimeout)
+        ui.outro.removeEventListener('pointerdown', showSummary)
+        window.removeEventListener('keydown', showSummary)
         if (!ui.outroBody.hidden) return
         ui.outro.classList.add('is-summary')
         ui.outroBody.hidden = false
@@ -2988,7 +3044,8 @@ const saveLevel = (key) => {
 }
 
 const applyLevel = (key) => {
-    currentLevelKey = levels[key] ? key : 'junior'
+    // hasOwn, а не levels[key]: из localStorage может прийти, например, 'toString'
+    currentLevelKey = Object.hasOwn(levels, key) ? key : 'junior'
     currentLevel = levels[currentLevelKey]
 
     Object.assign(game, getLevelParams('game', currentLevel.tier))
@@ -3047,22 +3104,6 @@ for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => start
 /**
  * Animate
  */
-// Свои часы вместо THREE.Clock: копим только ограниченный шаг кадра.
-// Пока вкладка скрыта, кадров нет — и игровое время стоит, а не убегает вперёд
-const MAX_FRAME_STEP = 0.1
-const clock = (() => {
-    let elapsed = 0
-    let last = performance.now()
-    return {
-        update() {
-            const now = performance.now()
-            elapsed += Math.min((now - last) / 1000, MAX_FRAME_STEP)
-            last = now
-        },
-        getElapsedTime: () => elapsed,
-    }
-})()
-
 let previousTime = 0
 
 // На телефоне текст интро занимает нижнюю половину экрана — сдвигаем кадр, чтобы офис оказался сверху.

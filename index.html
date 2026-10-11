@@ -199,14 +199,15 @@
       <p class="outro-sting-text" data-outro-sting-text></p>
     </aside>
 
-    <!-- Кнопка звука видна всегда, даже на стартовом экране. Клавиша M делает то же самое -->
     <!-- Режим Look around: подсказка по управлению и выход -->
     <div class="explore-bar" data-explore-bar hidden>
       <span class="explore-hint" data-explore-hint></span>
       <button type="button" class="explore-back" data-explore-back>[esc] back</button>
     </div>
 
-    <button class="mute" data-mute aria-pressed="false" title="Toggle sound (M)">
+    <!-- Кнопка звука видна всегда, даже на стартовом экране. Клавиша M делает то же самое.
+         Состояние передаёт подпись (Sound on / Sound off), поэтому aria-pressed не нужен -->
+    <button type="button" class="mute" data-mute title="Toggle sound (M)">
       <svg class="mute-icon mute-icon-on" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 9v6h4l5 4V5L8 9H4z" />
         <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" />

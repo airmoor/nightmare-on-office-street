@@ -7,8 +7,16 @@ import * as THREE from 'three'
 
 // Уведомления — это чужие приложения, у них свой «системный» шрифт.
 // Всё, что принадлежит самому офису (экран героя, надписи над столами), — моноширинный, как интерфейс игры
-const FONT_FAMILY = 'Inter, system-ui, -apple-system, Segoe UI, sans-serif'
+const FONT_FAMILY = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 const MONO_FAMILY = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+
+// Canvas не ждёт веб-шрифт: если нарисовать текст до загрузки, останется запасной шрифт.
+// document.fonts.load сам запускает загрузку нужных начертаний (DOM может их и не использовать)
+export const monoFontReady = Promise.all(
+    ['400 20px', 'italic 400 20px', '500 20px', '600 20px'].map((style) =>
+        document.fonts?.load(`${style} 'IBM Plex Mono'`)
+    )
+).catch(() => {})
 
 // Разбиваем текст на строки, чтобы он влезал в maxWidth
 const wrapText = (context, text, maxWidth) => {
