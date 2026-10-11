@@ -2115,9 +2115,41 @@ const onCardHit = () => {
     if (game.stress >= 100) startEnding('burnout')
 }
 
+// HUD обновляется каждый кадр — трогаем DOM, только когда значение правда изменилось
+const hud = {
+    score: null,
+    multiplier: null,
+    meters: new Map(), // meter → { fill, width, isDanger }
+}
+
 const setMeter = (meter, value, isDanger) => {
-    meter.querySelector('[data-meter-fill]').style.width = `${value}%`
-    meter.classList.toggle('is-danger', isDanger)
+    if (!hud.meters.has(meter)) hud.meters.set(meter, { fill: meter.querySelector('[data-meter-fill]') })
+    const state = hud.meters.get(meter)
+    const width = `${value.toFixed(1)}%`
+    if (state.width !== width) {
+        state.fill.style.width = width
+        state.width = width
+    }
+    if (state.isDanger !== isDanger) {
+        meter.classList.toggle('is-danger', isDanger)
+        state.isDanger = isDanger
+    }
+}
+
+const updateHud = () => {
+    const score = Math.floor(game.score)
+    if (score !== hud.score) {
+        ui.score.textContent = score
+        hud.score = score
+    }
+    const multiplier = getMultiplier()
+    if (multiplier !== hud.multiplier) {
+        // Слово combo на телефоне прячет CSS: с четырёхзначным счётом оно переносится и HUD прыгает
+        ui.combo.innerHTML = multiplier > 1 ? `×${multiplier}<span class="hud-combo-word"> combo</span>` : ''
+        hud.multiplier = multiplier
+    }
+    setMeter(ui.performance, game.performance, game.performance < DANGER_LEVEL)
+    setMeter(ui.stress, game.stress, game.stress > 100 - DANGER_LEVEL)
 }
 
 const updateGame = (elapsedTime, deltaTime) => {
@@ -2165,13 +2197,7 @@ const updateGame = (elapsedTime, deltaTime) => {
         person.position.y = 0
     }
 
-    ui.score.textContent = Math.floor(game.score)
-    const multiplier = getMultiplier()
-    // Слово combo на телефоне прячет CSS: с четырёхзначным счётом оно переносится и HUD прыгает
-    ui.combo.innerHTML = multiplier > 1 ? `×${multiplier}<span class="hud-combo-word"> combo</span>` : ''
-
-    setMeter(ui.performance, game.performance, game.performance < DANGER_LEVEL)
-    setMeter(ui.stress, game.stress, game.stress > 100 - DANGER_LEVEL)
+    updateHud()
     ui.vignette.style.opacity = Math.min(1, (game.stress / 100) * params.vignetteStrength + game.hitFlash * 0.3)
 
     if (game.performance <= 0) startEnding(isFrozen(elapsedTime) ? 'frozen' : 'fired')
