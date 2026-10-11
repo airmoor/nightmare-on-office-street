@@ -998,7 +998,7 @@ const CAMERA_SIDE_GAP = THREE.MathUtils.degToRad(50)
 const randomSpawnPoint = () => {
     const cameraAngle = Math.atan2(camera.position.z - heroHead.z, camera.position.x - heroHead.x)
     const angle = cameraAngle + CAMERA_SIDE_GAP + Math.random() * (Math.PI * 2 - CAMERA_SIDE_GAP * 2)
-    const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random()) * getSpawnScale()
+    const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random()) * SPAWN_SCALE
     return new THREE.Vector3(
         heroHead.x + Math.cos(angle) * radius,
         2.5 + Math.random() * 2.5,
@@ -1023,7 +1023,7 @@ const spawnCard = (item, elapsedTime, { from = randomSpawnPoint(), duration: fix
 
     // Длительность полёта зависит от расстояния: карточка, родившаяся рядом, долетает быстрее
     const baseDuration = THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, getNightDifficulty())
-    const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2 * getSpawnScale()
+    const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2 * SPAWN_SCALE
     const duration = fixedDuration ?? Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
 
     const card = {
@@ -1239,8 +1239,9 @@ const CAMERA_DISTANCE_LANDSCAPE = 9
 const getSpriteScale = () => (isPortrait() ? 1.3 : 1)
 // Карточкам — ещё крупнее: на них текст, и его надо успеть прочитать на лету
 const getCardScale = () => (isPortrait() ? 1.5 : 1)
-// Карточки на телефоне рождаются ближе к герою — иначе половину полёта они за краем узкого экрана
-const getSpawnScale = () => 0.75
+// Карточки рождаются ближе к герою, чем край офиса: иначе на узком экране половину полёта они за кадром.
+// Одинаково для любой ориентации — так темп игры не зависит от того, как держат телефон
+const SPAWN_SCALE = 0.75
 
 const camera = new THREE.PerspectiveCamera(getCameraFov(), sizes.width / sizes.height, 0.1, 100)
 camera.position.set(7, 7.5, 11)
