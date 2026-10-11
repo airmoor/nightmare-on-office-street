@@ -61,17 +61,17 @@ scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
 // Это «фейковый» свет: выглядит как лампа, но почти ничего не стоит для GPU
 const createLightPoolTexture = () => {
     const size = 256
-    const canvas = document.createElement('canvas')
-    canvas.width = size
-    canvas.height = size
-    const context = canvas.getContext('2d')
+    const poolCanvas = document.createElement('canvas')
+    poolCanvas.width = size
+    poolCanvas.height = size
+    const context = poolCanvas.getContext('2d')
     const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
     gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
     gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.35)')
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
     context.fillStyle = gradient
     context.fillRect(0, 0, size, size)
-    const texture = new THREE.CanvasTexture(canvas)
+    const texture = new THREE.CanvasTexture(poolCanvas)
     texture.colorSpace = THREE.SRGBColorSpace
     return texture
 }
@@ -2306,8 +2306,8 @@ const placeCoach = (anchor) => {
     // Пузырь не даём увезти за край экрана, а хвостик всё равно смотрит на цель
     const halfWidth = ui.coachText.offsetWidth / 2
     const margin = 16
-    const shift = THREE.MathUtils.clamp(x, margin + halfWidth, sizes.width - margin - halfWidth) - x
-    ui.coach.style.setProperty('--shift', `${shift}px`)
+    const offset = THREE.MathUtils.clamp(x, margin + halfWidth, sizes.width - margin - halfWidth) - x
+    ui.coach.style.setProperty('--shift', `${offset}px`)
 }
 
 /**
@@ -2657,13 +2657,13 @@ const showOutro = (kind) => {
     const stats = experience.endingStats
 
     // Такт 1: последнее уведомление — в сцене
-    const story = ending.story(stats)
+    const storyCard = ending.story(stats)
     ui.outro.style.setProperty('--accent', ending.accent)
-    ui.outroStorySender.textContent = story.sender
-    ui.outroStoryTime.textContent = story.time ?? stats.time
-    ui.outroStoryTitle.textContent = story.title
-    setText(ui.outroStoryMeta, story.meta)
-    setText(ui.outroStoryText, story.text)
+    ui.outroStorySender.textContent = storyCard.sender
+    ui.outroStoryTime.textContent = storyCard.time ?? stats.time
+    ui.outroStoryTitle.textContent = storyCard.title
+    setText(ui.outroStoryMeta, storyCard.meta)
+    setText(ui.outroStoryText, storyCard.text)
 
     // Такт 2: итоги
     ui.outroTitle.innerHTML = ending.title(stats)
