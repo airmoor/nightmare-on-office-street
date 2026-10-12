@@ -1,24 +1,24 @@
 /**
- * Весь звук генерируется кодом через Web Audio API — никаких файлов и лицензий.
- * Схема: источники (осцилляторы, шум) → фильтры → gain (громкость) → master → колонки
+  * All sound is generated in code with the Web Audio API: no audio files, no licenses.
+  * Graph: sources (oscillators, noise) → filters → gain → master → speakers
  *
- * Браузер разрешает звук только после действия пользователя,
- * поэтому start() вызывается на первое нажатие: удержание clock in, Look around или клик по экрану
+  * Browsers only allow audio after a user gesture,
+  * so start() runs on the first press: holding clock in, Look around, or any tap on the screen
  *
- * iOS: по умолчанию Web Audio молчит, если включён беззвучный режим (переключатель сбоку).
- * Safari 17+ позволяет сказать «это проигрывание медиа» через navigator.audioSession.
- * Для старых iOS работает трюк: одновременно играть беззвучный <audio> — он переключает телефон в режим медиа
+  * iOS: Web Audio is silent by default when the ring/silent switch is on.
+  * Safari 17+ lets us declare "this is media playback" via navigator.audioSession.
+  * On older iOS the trick is to loop a silent <audio> element, which switches the phone into media mode
  */
 const createSilentWavUrl = () => {
     const sampleRate = 8000
-    const samples = 800 // 0.1 секунды
+    const samples = 800 // 0.1 seconds
     const buffer = new ArrayBuffer(44 + samples)
     const view = new DataView(buffer)
     const writeString = (offset, text) => {
         for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
     }
 
-    // Заголовок WAV: 8-битный моно
+    // WAV header: 8-bit mono
     writeString(0, 'RIFF')
     view.setUint32(4, 36 + samples, true)
     writeString(8, 'WAVE')
@@ -32,7 +32,7 @@ const createSilentWavUrl = () => {
     view.setUint16(34, 8, true)
     writeString(36, 'data')
     view.setUint32(40, samples, true)
-    for (let i = 0; i < samples; i++) view.setUint8(44 + i, 128) // 128 — тишина для 8 бит
+    for (let i = 0; i < samples; i++) view.setUint8(44 + i, 128) // 128 is silence for 8-bit audio
 
     return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }))
 }
@@ -62,7 +62,7 @@ export const createSound = () => {
     let muted = false
     let lastPingAt = 0
 
-    // Плавно меняем параметр, чтобы не было щелчков
+    // Ramp parameters smoothly to avoid clicks
     const rampTo = (param, value, duration = 0.3) => {
         const now = context.currentTime
         param.cancelScheduledValues(now)
@@ -70,7 +70,7 @@ export const createSound = () => {
         param.linearRampToValueAtTime(value, now + duration)
     }
 
-    // Короткий звук: осциллятор с огибающей громкости (быстро вверх, плавно вниз)
+    // A short sound: an oscillator with a volume envelope (fast attack, smooth decay)
     const blip = ({ type = 'sine', from, to = from, duration, volume, delay = 0 }) => {
         if (!context) return
         const start = context.currentTime + delay
@@ -90,13 +90,13 @@ export const createSound = () => {
         oscillator.stop(start + duration + 0.05)
     }
 
-    // Низкий гул офиса: два чуть расстроенных осциллятора дают «биение»
+    // Low office hum: two slightly detuned oscillators produce a beating effect
     const createDrone = () => {
         const gain = context.createGain()
         gain.gain.value = 0
         const filter = context.createBiquadFilter()
         filter.type = 'lowpass'
-        filter.frequency.value = 320 // ниже ~200 Гц динамик телефона почти ничего не играет
+        filter.frequency.value = 320 // phone speakers barely play anything below ~200 Hz
 
         for (const frequency of [55, 55.7]) {
             const oscillator = context.createOscillator()
@@ -110,7 +110,7 @@ export const createSound = () => {
         return { gain, filter }
     }
 
-    // Шипение вентиляции: белый шум через полосовой фильтр
+    // Ventilation hiss: white noise through a band-pass filter
     const createHiss = () => {
         const length = context.sampleRate * 2
         const buffer = context.createBuffer(1, length, context.sampleRate)
@@ -135,12 +135,12 @@ export const createSound = () => {
         return { gain }
     }
 
-    // Сердцебиение «тук-тук»: чем выше напряжение, тем чаще
+    // Heartbeat: the higher the tension, the faster it beats
     const scheduleHeartbeat = () => {
-        const interval = 1.3 - intensity * 0.85 // от 1.3 с до 0.45 с
+        const interval = 1.3 - intensity * 0.85 // from 1.3 s down to 0.45 s
         if (intensity > 0.2) {
             const volume = 0.12 + intensity * 0.16
-            // triangle вместо sine: у него есть обертоны, и удар слышно даже на динамике телефона
+            // triangle instead of sine: its overtones make the thump audible even on a phone speaker
             blip({ type: 'triangle', from: 90, to: 45, duration: 0.16, volume })
             blip({ type: 'triangle', from: 75, to: 40, duration: 0.14, volume: volume * 0.7, delay: 0.2 })
         }
@@ -153,10 +153,10 @@ export const createSound = () => {
 
         const AudioContextClass = window.AudioContext || window.webkitAudioContext
         context = new AudioContextClass()
-        context.resume() // Safari иногда создаёт контекст сразу на паузе
+        context.resume() // Safari sometimes creates the context already suspended
         master = context.createGain()
         master.gain.value = muted ? 0 : 0.8
-        // Компрессор сглаживает пики: когда звуки накладываются в конце, общая громкость не взлетает
+        // The compressor tames peaks so overlapping sounds near the end don't blow up the volume
         const compressor = context.createDynamicsCompressor()
         compressor.threshold.value = -24
         compressor.knee.value = 12
@@ -172,7 +172,7 @@ export const createSound = () => {
         scheduleHeartbeat()
     }
 
-    // 0 — спокойно, 1 — максимальная тревога
+    // 0 is calm, 1 is maximum anxiety
     const setIntensity = (value) => {
         intensity = value
         if (!context) return
@@ -181,7 +181,7 @@ export const createSound = () => {
         rampTo(hiss.gain.gain, 0.012 + value * 0.008)
     }
 
-    // Уведомление: два коротких тона вверх. Не чаще, чем раз в 0.15 с
+    // Notification: two short rising tones, at most once every 0.15 s
     const ping = () => {
         if (!context || context.currentTime - lastPingAt < 0.15) return
         lastPingAt = context.currentTime
@@ -189,17 +189,17 @@ export const createSound = () => {
         blip({ from: 1320, duration: 0.18, volume: 0.035, delay: 0.07 })
     }
 
-    // Закрыли карточку: короткий «пуф» вниз
+    // Card dismissed: a short downward "poof"
     const pop = () => blip({ type: 'triangle', from: 600, to: 120, duration: 0.12, volume: 0.08 })
 
-    // Лампа коротит при увольнении
+    // A lamp shorting out when someone gets fired
     const buzz = () => {
         for (let i = 0; i < 4; i++) {
             blip({ type: 'square', from: 120, duration: 0.06, volume: 0.03, delay: i * 0.18 + Math.random() * 0.1 })
         }
     }
 
-    // Стук клавиш, пока герой работает. Не чаще, чем раз в 0.08 с
+    // Keyboard clicks while the hero works, at most once every 0.08 s
     let lastTypeAt = 0
     const type = () => {
         if (!context || context.currentTime - lastTypeAt < 0.08) return
@@ -207,16 +207,16 @@ export const createSound = () => {
         blip({ type: 'square', from: 1800 + Math.random() * 900, to: 900, duration: 0.025, volume: 0.015 })
     }
 
-    // Герой сам выключает свою лампу: щелчок выключателя
+    // The hero switches off his own lamp: a light switch click
     const click = () => {
         blip({ type: 'square', from: 2400, to: 1600, duration: 0.02, volume: 0.04 })
         blip({ type: 'triangle', from: 140, to: 70, duration: 0.08, volume: 0.06, delay: 0.01 })
     }
 
-    // Карточка долетела до головы: глухой удар
+    // A card reached the hero's head: a dull thud
     const hit = () => blip({ type: 'triangle', from: 160, to: 55, duration: 0.25, volume: 0.09 })
 
-    // Выгорание: высокий звон в ушах, который медленно затихает
+    // Burnout: a high-pitched ringing in the ears that slowly fades
     const tinnitus = () => {
         if (!context) return
         const now = context.currentTime
@@ -231,8 +231,8 @@ export const createSound = () => {
         oscillator.stop(now + 9.5)
     }
 
-    // Финал: тревога уходит. В спокойной концовке остаётся тихий тёплый аккорд.
-    // fade — за сколько секунд затихает гул: в концовке Frozen звук обрывается почти сразу
+    // Finale: the anxiety drains away. The calm ending leaves a quiet, warm chord.
+    // fade is how many seconds the hum takes to die out; in the Frozen ending it cuts off almost instantly
     const calm = ({ chord = true, fade = 4 } = {}) => {
         if (!context) return
         clearTimeout(heartbeatTimeout)
@@ -254,7 +254,7 @@ export const createSound = () => {
         }
     }
 
-    // Можно вызывать и до start(): тогда звук сразу начнётся выключенным
+    // Safe to call before start(): the sound will then start muted
     const setMuted = (value) => {
         muted = value
         if (context) rampTo(master.gain, muted ? 0 : 0.8, 0.2)
@@ -262,7 +262,7 @@ export const createSound = () => {
 
     const isMuted = () => muted
 
-    // iOS ставит звук на паузу, когда вкладку свернули или пришёл звонок. Будим его по касанию
+    // iOS suspends audio when the tab is hidden or a call comes in. Wake it on the next touch
     const resume = () => {
         if (context && context.state !== 'running') context.resume()
     }

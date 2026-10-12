@@ -1,24 +1,24 @@
 import * as THREE from 'three'
 
 /**
- * Хелперы, которые рисуют текст на <canvas> и превращают его в текстуру.
- * Это проще и легче, чем 3D Text: текст — просто картинка на плоскости или спрайте
+  * Helpers that draw text on a <canvas> and turn it into a texture.
+  * Simpler and lighter than 3D text: the text is just an image on a plane or a sprite
  */
 
-// Уведомления — это чужие приложения, у них свой «системный» шрифт.
-// Всё, что принадлежит самому офису (экран героя, надписи над столами), — моноширинный, как интерфейс игры
+// Notifications come from other people's apps, so they use a "system" font.
+// Everything that belongs to the office itself (the hero's screen, labels above desks) is monospace, like the game UI
 const FONT_FAMILY = "system-ui, -apple-system, 'Segoe UI', sans-serif"
 const MONO_FAMILY = "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 
-// Canvas не ждёт веб-шрифт: если нарисовать текст до загрузки, останется запасной шрифт.
-// document.fonts.load сам запускает загрузку нужных начертаний (DOM может их и не использовать)
+// Canvas doesn't wait for web fonts: text drawn before the font loads keeps the fallback font.
+// document.fonts.load triggers loading the needed faces itself (the DOM may never use them)
 export const monoFontReady = Promise.all(
     ['400 20px', 'italic 400 20px', '500 20px', '600 20px'].map((style) =>
         document.fonts?.load(`${style} 'IBM Plex Mono'`)
     )
 ).catch(() => {})
 
-// Разбиваем текст на строки, чтобы он влезал в maxWidth
+// Split text into lines that fit within maxWidth
 const wrapText = (context, text, maxWidth) => {
     const words = text.split(' ')
     const lines = []
@@ -45,8 +45,8 @@ const toTexture = (canvas) => {
 }
 
 /**
- * Карточка уведомления: тёмный фон, цветная метка сверху, текст
- * Возвращает текстуру и соотношение сторон, чтобы правильно отмасштабировать спрайт
+  * Notification card: dark background, colored label on top, then the text
+  * Returns the texture and its aspect ratio so the sprite can be scaled correctly
  */
 export const createCardTexture = ({ label, text, accent = '#ff5a5a', width = 512 }) => {
     const padding = 28
@@ -57,12 +57,12 @@ export const createCardTexture = ({ label, text, accent = '#ff5a5a', width = 512
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
 
-    // Сначала меряем текст, чтобы узнать высоту карточки
+    // Measure the text first to know the card height
     context.font = `600 ${textSize}px ${FONT_FAMILY}`
     const lines = wrapText(context, text, width - padding * 2)
     const height = padding * 2 + labelSize + 16 + lines.length * lineHeight
 
-    // Изменение размера canvas сбрасывает настройки context — поэтому font задаём ещё раз ниже
+    // Resizing a canvas resets the context state, so the font is set again below
     canvas.width = width
     canvas.height = height
 
@@ -89,7 +89,7 @@ export const createCardTexture = ({ label, text, accent = '#ff5a5a', width = 512
 }
 
 /**
- * Светящаяся надпись без фона, например «LOW PERFORMANCE» над столом
+  * Glowing label without a background, e.g. "LOW PERFORMANCE" above a desk
  */
 export const createGlowLabelTexture = (text, color = '#ff4d4d') => {
     const fontSize = 64
@@ -114,8 +114,8 @@ export const createGlowLabelTexture = (text, color = '#ff4d4d') => {
 }
 
 /**
- * Экран, который перерисовывается каждый раз при изменении данных
- * draw(context, width, height) — твоя функция рисования
+  * A screen that is redrawn whenever its data changes
+  * draw(context, width, height, font) is your drawing function
  */
 export const createScreenTexture = ({ width = 512, height = 288 }) => {
     const canvas = document.createElement('canvas')
@@ -127,7 +127,7 @@ export const createScreenTexture = ({ width = 512, height = 288 }) => {
     const redraw = (draw) => {
         context.clearRect(0, 0, width, height)
         draw(context, width, height, MONO_FAMILY)
-        texture.needsUpdate = true // говорим Three.js, что картинку надо загрузить в GPU заново
+        texture.needsUpdate = true // tell Three.js to re-upload the image to the GPU
     }
 
     return { texture, redraw }
