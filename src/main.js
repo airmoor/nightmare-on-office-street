@@ -7,21 +7,21 @@ import { createSound } from './sound.js'
 /**
  * Base
  */
-// Панель видна только по адресу с #debug, например localhost:5173/#debug
+// The panel only shows with #debug in the URL, e.g. localhost:5173/#debug
 const gui = new GUI({ title: 'Debug' })
 const updateDebugVisibility = () => gui.show(window.location.hash === '#debug')
 updateDebugVisibility()
 window.addEventListener('hashchange', updateDebugVisibility)
 const canvas = document.querySelector('canvas.webgl')
-// Долгое нажатие — главная механика игры, поэтому меню браузера «Сохранить изображение…» на нём не нужно
+// Long press is the core mechanic, so the browser's "Save image…" menu must not open on it
 canvas.addEventListener('contextmenu', (event) => event.preventDefault())
 const scene = new THREE.Scene()
 
 const params = {
     background: '#05060a',
     fogDensity: 0.06,
-    fogDensityGrowth: 0.015, // насколько сгущается туман к концу истории
-    vignetteStrength: 0.55, // насколько темнеют края экрана при максимальном стрессе
+    fogDensityGrowth: 0.015, // how much the fog thickens by the end of the story
+    vignetteStrength: 0.55, // how dark the screen edges get at maximum stress
     heroLightIntensity: 25,
     cameraShake: 0.04,
 }
@@ -29,8 +29,8 @@ const params = {
 const sound = createSound()
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-// Свои часы вместо THREE.Clock: копим только ограниченный шаг кадра.
-// Пока вкладка скрыта, кадров нет — и игровое время стоит, а не убегает вперёд
+// Our own clock instead of THREE.Clock: it only accumulates a clamped frame step.
+// While the tab is hidden there are no frames, so game time stands still instead of racing ahead
 const MAX_FRAME_STEP = 0.1
 const clock = (() => {
     let elapsed = 0
@@ -45,10 +45,10 @@ const clock = (() => {
     }
 })()
 
-// Небольшие общие хелперы
+// Small shared helpers
 const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
 const randomBetween = ([min, max]) => min + Math.random() * (max - min)
-// Детерминированный псевдошум 0..1: одно и то же n — одно и то же значение (мигание ламп)
+// Deterministic pseudo-noise in 0..1: the same n always gives the same value (lamp flicker)
 const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
 
 scene.background = new THREE.Color(params.background)
@@ -57,8 +57,8 @@ scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
 /**
  * Textures
  */
-// Мягкое световое пятно рисуем на canvas: белый центр -> прозрачный край.
-// Это «фейковый» свет: выглядит как лампа, но почти ничего не стоит для GPU
+// A soft light pool drawn on a canvas: white center -> transparent edge.
+// It's a "fake" light: it looks like a lamp but costs the GPU almost nothing
 const createLightPoolTexture = () => {
     const size = 256
     const poolCanvas = document.createElement('canvas')
@@ -79,7 +79,7 @@ const lightPoolTexture = createLightPoolTexture()
 
 /**
  * Shared geometries & materials
- * Одна геометрия на все столы, а не своя у каждого: так быстрее
+  * One geometry shared by all desks instead of one per desk: faster
  */
 const geometries = {
     deskTop: new THREE.BoxGeometry(1.6, 0.06, 0.8),
@@ -113,7 +113,7 @@ const colors = {
     bulbOff: new THREE.Color('#1a1a1a'),
     screenOn: new THREE.Color('#5d8bd6'),
     screenOff: new THREE.Color('#050608'),
-    screenWork: new THREE.Color('#9be7c4'), // экран героя, пока он работает
+    screenWork: new THREE.Color('#9be7c4'), // the hero's screen while he works
 }
 
 /**
@@ -136,7 +136,7 @@ const createPerson = (shirtColor) => {
 
     const torso = new THREE.Mesh(geometries.torso, shirt)
     torso.position.y = 0.98
-    torso.rotation.x = -0.12 // чуть сутулится к монитору
+    torso.rotation.x = -0.12 // slightly hunched towards the monitor
     person.add(torso)
 
     const head = new THREE.Mesh(geometries.head, materials.skin)
@@ -147,7 +147,7 @@ const createPerson = (shirtColor) => {
     thighs.position.set(0, 0.55, -0.15)
     person.add(thighs)
 
-    // Понадобится в концовке Logged off, когда герой встаёт и уходит
+    // Needed for the Logged off ending, when the hero stands up and walks away
     person.userData = { torso, thighs }
 
     return person
@@ -174,7 +174,7 @@ const createChair = () => {
 const createDesk = ({ shirtColor }) => {
     const desk = new THREE.Group()
 
-    // Столешница и ножки
+    // Desktop and legs
     const top = new THREE.Mesh(geometries.deskTop, materials.desk)
     top.position.y = 0.75
     desk.add(top)
@@ -185,7 +185,7 @@ const createDesk = ({ shirtColor }) => {
         desk.add(leg)
     }
 
-    // Монитор: корпус + светящийся экран (MeshBasicMaterial не зависит от света)
+    // Monitor: housing + glowing screen (MeshBasicMaterial ignores lighting)
     const stand = new THREE.Mesh(geometries.monitorStand, materials.metal)
     stand.position.set(0, 0.88, -0.22)
     desk.add(stand)
@@ -201,7 +201,7 @@ const createDesk = ({ shirtColor }) => {
     screen.position.set(0, 1.15, -0.199)
     desk.add(screen)
 
-    // Стул и человек сидят перед столом (+z), лицом к монитору (-z)
+    // Chair and person sit in front of the desk (+z), facing the monitor (-z)
     const chair = createChair()
     chair.position.z = 0.65
     desk.add(chair)
@@ -210,7 +210,7 @@ const createDesk = ({ shirtColor }) => {
     person.position.z = 0.65
     desk.add(person)
 
-    // Подвесная лампа
+    // Pendant lamp
     const cord = new THREE.Mesh(geometries.cord, materials.metal)
     cord.position.y = 3.7
     desk.add(cord)
@@ -226,7 +226,7 @@ const createDesk = ({ shirtColor }) => {
     bulb.position.y = 2.6
     desk.add(bulb)
 
-    // Световое пятно на полу под лампой
+    // Light pool on the floor under the lamp
     const lightPool = new THREE.Mesh(
         geometries.lightPool,
         new THREE.MeshBasicMaterial({
@@ -249,7 +249,7 @@ const createDesk = ({ shirtColor }) => {
         }
     })
 
-    // Всё, что понадобится менять потом, складываем в userData
+    // Everything we'll need to change later goes into userData
     desk.userData = {
         state: 'on', // 'on' | 'flickering' | 'off'
         flickerStart: 0,
@@ -284,7 +284,7 @@ for (let row = 0; row < office.rows; row++) {
     for (let col = 0; col < office.cols; col++) {
         const isHero = row === office.heroRow && col === office.heroCol
         const desk = createDesk({
-            // Герой в оранжевом худи — маленький хеллоуинский намёк
+            // The hero wears an orange hoodie: a small Halloween nod
             shirtColor: isHero ? '#d9772b' : colleagueShirts[(row * office.cols + col) % colleagueShirts.length],
         })
         desk.position.set(
@@ -302,7 +302,7 @@ for (let row = 0; row < office.rows; row++) {
 /**
  * Hero desk extras
  */
-// Тыква на столе героя
+// A pumpkin on the hero's desk
 const pumpkin = new THREE.Group()
 const pumpkinBody = new THREE.Mesh(
     new THREE.SphereGeometry(0.1, 16, 12),
@@ -320,7 +320,7 @@ pumpkin.position.set(0.62, 0.86, 0.25)
 pumpkin.traverse((child) => { if (child.isMesh) child.castShadow = true })
 heroDesk.add(pumpkin)
 
-// Второй монитор: на нём герой весь день откликается на вакансии
+// Second monitor: the hero spends all day applying for jobs on it
 const jobScreen = createScreenTexture({ width: 512, height: 288 })
 
 const jobMonitor = new THREE.Group()
@@ -340,10 +340,10 @@ heroDesk.add(jobMonitor)
 
 /**
  * Code screen
- * На главном мониторе героя — редактор. Пока игрок держит монитор, текст набирается по символу; отпустил — мигает курсор.
- * Три файла по кругу рассказывают ночь: срочный тикет → самооценка к performance review → резюме.
- * Тема светлая: экран — источник света в тёмном офисе, а цвет материала (синий, зелёный при работе)
- * по-прежнему тонирует всю картинку — монитор светится как раньше, просто теперь на нём что-то есть
+  * The hero's main monitor shows an editor. While the player holds the monitor, text is typed character by character; let go and the cursor blinks.
+  * Three files on a loop tell the story of the night: an urgent ticket → a performance review self-assessment → a resume.
+  * Light theme: the screen is a light source in the dark office, and the material color (blue, green while working)
+  * still tints the whole image, so the monitor glows as before, it just has something on it now
  */
 const codeScreen = createScreenTexture({ width: 512, height: 288 })
 heroDesk.userData.screen.material.map = codeScreen.texture
@@ -400,9 +400,9 @@ const CODE_FILES = [
         ],
     },
 ]
-const CODE_TYPE_SPEED = 38 // символов в секунду, пока игрок держит монитор
-const CODE_IDLE_SPEED = 16 // на стартовом экране и в Look around герой печатает сам, неспешно
-const CODE_FILE_PAUSE = 2.5 // сколько секунд дописанный файл висит на экране, прежде чем открыть следующий
+const CODE_TYPE_SPEED = 38 // characters per second while the player holds the monitor
+const CODE_IDLE_SPEED = 16 // on the start screen and in Look around the hero types on his own, unhurried
+const CODE_FILE_PAUSE = 2.5 // seconds a finished file stays on screen before the next one opens
 const code = { file: 0, typed: 0, doneAt: null, drawnChars: -1, drawnCursor: null }
 const getCodeLength = (file) => file.lines.reduce((total, line) => total + line.length + 1, 0)
 
@@ -413,7 +413,7 @@ const drawCodeScreen = (showCursor) => {
         context.fillRect(0, 0, width, height)
         context.textBaseline = 'middle'
 
-        // Вкладка с именем файла и «горящим» тикетом
+        // Tab with the file name and a "burning" ticket
         context.fillStyle = '#d5deec'
         context.fillRect(0, 0, width, 34)
         context.font = `500 15px ${font}`
@@ -424,7 +424,7 @@ const drawCodeScreen = (showCursor) => {
         context.textAlign = 'right'
         context.fillText(file.ticket, width - 14, 17)
 
-        // Набранные строки. Если не помещаются — показываем последние, как будто редактор прокручивается
+        // Typed lines. If they don't fit, show the last ones, as if the editor scrolled
         const lineHeight = 23
         const top = 44
         const maxLines = Math.floor((height - top - 30) / lineHeight)
@@ -454,7 +454,7 @@ const drawCodeScreen = (showCursor) => {
             }
         })
 
-        // Статус-бар
+        // Status bar
         context.fillStyle = '#d5deec'
         context.fillRect(0, height - 26, width, 26)
         context.font = `13px ${font}`
@@ -472,12 +472,12 @@ const updateCodeScreen = (elapsedTime, deltaTime) => {
     if (phase === 'running') {
         typing = game.working
     } else if (phase === 'intro' || phase === 'explore') {
-        // Сам по себе герой печатает урывками: то быстро, то замирает и смотрит в экран
+        // On his own the hero types in bursts: quick, then frozen, staring at the screen
         typing = Math.sin(elapsedTime * 0.9) + Math.sin(elapsedTime * 2.3) * 0.5 > -0.3
         speed = CODE_IDLE_SPEED
         heroDesk.userData.person.position.y = typing ? Math.abs(Math.sin(elapsedTime * 25)) * 0.012 : 0
     } else {
-        return // финал: экран замирает на том, что успел набрать
+        return // finale: the screen freezes on whatever was typed
     }
 
     const total = getCodeLength(CODE_FILES[code.file])
@@ -491,7 +491,7 @@ const updateCodeScreen = (elapsedTime, deltaTime) => {
         }
     }
 
-    // Пока печатает — курсор горит, иначе мигает. Перерисовываем только когда что-то изменилось
+    // Cursor is solid while typing, blinking otherwise. Redraw only when something changed
     const showCursor = typing || Math.floor(elapsedTime * 2) % 2 === 0
     const chars = Math.floor(code.typed) + code.file * 10000
     if (chars !== code.drawnChars || showCursor !== code.drawnCursor) {
@@ -501,11 +501,11 @@ const updateCodeScreen = (elapsedTime, deltaTime) => {
     }
 }
 
-// Точка, в которую летят все новости — голова героя
+// The point every notification flies to: the hero's head
 const heroHead = heroDesk.position.clone().add(new THREE.Vector3(0, 1.5, 0.57))
 
-// Невидимая коробка вокруг монитора героя: по ней проще попасть пальцем, чем по самому экрану.
-// visible: false в материале — меш не рисуется, но Raycaster его всё равно находит
+// An invisible box around the hero's monitor: much easier to hit with a finger than the screen itself.
+// visible: false on the material means the mesh isn't drawn, but the Raycaster still finds it
 const workHitbox = new THREE.Mesh(
     new THREE.BoxGeometry(1, 0.8, 0.6),
     new THREE.MeshBasicMaterial({ visible: false })
@@ -513,14 +513,14 @@ const workHitbox = new THREE.Mesh(
 workHitbox.position.set(0, 1.1, -0.1)
 heroDesk.add(workHitbox)
 
-// Такая же невидимая сфера вокруг лампы героя: по ней можно выключить свет и уйти (концовка Logged off)
+// A similar invisible sphere around the hero's lamp: it switches the light off and leaves (Logged off ending)
 const lampHitbox = new THREE.Mesh(
     new THREE.SphereGeometry(0.4, 8, 8),
     new THREE.MeshBasicMaterial({ visible: false })
 )
 lampHitbox.position.set(0, 2.65, 0)
 heroDesk.add(lampHitbox)
-const lampHold = { holding: false, progress: 0 } // 0 → 1, пока игрок держит лампу
+const lampHold = { holding: false, progress: 0 } // 0 → 1 while the player holds the lamp
 
 /**
  * Lights
@@ -528,12 +528,12 @@ const lampHold = { holding: false, progress: 0 } // 0 → 1, пока игрок
 const ambientLight = new THREE.AmbientLight('#8090b0', 0.16)
 scene.add(ambientLight)
 
-// Холодный «лунный» свет из окон — чтобы читались силуэты
+// Cold "moonlight" from the windows so silhouettes read
 const moonLight = new THREE.DirectionalLight('#6f86b8', 0.45)
 moonLight.position.set(-8, 10, -6)
 scene.add(moonLight)
 
-// Единственный настоящий тёплый свет — над героем. Только он отбрасывает тени
+// The only real warm light is above the hero. It's the only one that casts shadows
 const heroLight = new THREE.SpotLight('#ffd9a0', params.heroLightIntensity, 8, Math.PI * 0.28, 0.6, 2)
 heroLight.position.set(0, 2.6, 0)
 heroLight.target.position.set(0, 0, 0.2)
@@ -543,14 +543,14 @@ heroLight.shadow.camera.near = 0.5
 heroLight.shadow.camera.far = 6
 heroDesk.add(heroLight, heroLight.target)
 
-// Синеватый отсвет монитора на лице героя
+// Bluish monitor glow on the hero's face
 const monitorGlow = new THREE.PointLight('#6f9cff', 1.5, 2.5, 2)
 monitorGlow.position.set(0, 1.15, 0.05)
 heroDesk.add(monitorGlow)
 
 /**
  * Firing colleagues
- * Лампа мигает ~1.2 секунды, потом гаснет, а человек исчезает
+  * The lamp flickers for ~1.2 seconds, then goes out and the person disappears
  */
 const FLICKER_DURATION = 1.2
 
@@ -581,18 +581,18 @@ const fireRandomColleague = () => {
 
 /**
  * Firing labels
- * Над столом всплывает причина увольнения: появляется, медленно поднимается и тает
+  * The reason for the firing pops up above the desk: it appears, slowly rises and fades
  */
 const LABEL_LIFETIME = 3.5
 const floatingLabels = []
 
 const showFiringLabel = (desk, reason = pickRandom(firingReasons)) => {
     const { texture, aspect } = createGlowLabelTexture(reason)
-    // Sprite всегда повёрнут к камере — удобно для надписей
+    // A Sprite always faces the camera, which is handy for labels
     const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, opacity: 0 })
     )
-    sprite.renderOrder = 5 // поверх ламп и проводов, но под карточками
+    sprite.renderOrder = 5 // above lamps and cords, but below cards
     const height = 0.4 * getSpriteScale()
     sprite.scale.set(height * aspect, height, 1)
     sprite.position.copy(desk.position)
@@ -603,7 +603,7 @@ const showFiringLabel = (desk, reason = pickRandom(firingReasons)) => {
 }
 
 const updateFiringLabels = (elapsedTime) => {
-    // Идём с конца массива, потому что удаляем элементы по ходу
+    // Iterate backwards because we remove items as we go
     for (let i = floatingLabels.length - 1; i >= 0; i--) {
         const { sprite, start } = floatingLabels[i]
         const t = elapsedTime - start
@@ -623,7 +623,7 @@ const updateFiringLabels = (elapsedTime) => {
     }
 }
 
-// power: 1 — всё горит, 0 — темнота
+// power: 1 is fully lit, 0 is darkness
 const setDeskPower = (desk, power) => {
     const { bulb, screen, lightPool, basePoolOpacity } = desk.userData
     bulb.material.color.lerpColors(colors.bulbOff, colors.bulbOn, power)
@@ -648,7 +648,7 @@ const updateColleagues = (elapsedTime) => {
 
         const t = elapsedTime - desk.userData.flickerStart
         if (t < FLICKER_DURATION) {
-            // Псевдослучайное мигание ~12 раз в секунду
+            // Pseudo-random flicker, ~12 times per second
             setDeskPower(desk, hashNoise(Math.floor(t * 12)) > 0.45 ? 1 : 0.1)
         } else {
             setDeskPower(desk, 0)
@@ -661,10 +661,10 @@ const updateColleagues = (elapsedTime) => {
 
 /**
  * Ghosts
- * Уволенный коллега поднимается со стула призраком с коробкой вещей и бродит по офису
+  * A fired colleague rises from the chair as a ghost carrying a box of belongings and wanders around the office
  */
 const createGhostGeometry = () => {
-    // LatheGeometry «вращает» профиль вокруг оси Y — как гончарный круг
+    // LatheGeometry spins a profile around the Y axis, like a potter's wheel
     const profile = [
         new THREE.Vector2(0.3, 0),
         new THREE.Vector2(0.29, 0.2),
@@ -676,7 +676,7 @@ const createGhostGeometry = () => {
     ]
     const geometry = new THREE.LatheGeometry(profile, 32)
 
-    // Делаем волнистый подол: двигаем нижние вершины вверх-вниз по синусоиде
+    // Wavy hem: move the bottom vertices up and down along a sine wave
     const position = geometry.attributes.position
     for (let i = 0; i < position.count; i++) {
         if (position.getY(i) > 0.01) continue
@@ -716,7 +716,7 @@ const createGhost = () => {
 
     ghost.add(new THREE.Mesh(ghostGeometries.body, ghostMaterials.body))
 
-    // Глаза и коробка спереди, то есть по +z: туда призрак «смотрит»
+    // Eyes and box are at the front, i.e. +z: that's where the ghost "looks"
     for (const x of [-0.07, 0.07]) {
         const eye = new THREE.Mesh(ghostGeometries.eye, ghostMaterials.eye)
         eye.position.set(x, 0.66, 0.2)
@@ -736,7 +736,7 @@ const spawnGhost = (desk, elapsedTime) => {
 
     ghost.userData = {
         start: elapsedTime,
-        origin: desk.position.clone().add(new THREE.Vector3(0, 0, 0.65)), // стул
+        origin: desk.position.clone().add(new THREE.Vector3(0, 0, 0.65)), // the chair
         radius: 1.5 + Math.random() * 2,
         speed: (0.15 + Math.random() * 0.2) * direction,
         phase: Math.random() * Math.PI * 2,
@@ -752,13 +752,13 @@ const removeGhosts = () => {
     ghosts.length = 0
 }
 
-// В финале призраки растворяются: 1 → 0
+// In the finale the ghosts dissolve: 1 → 0
 let ghostVisibility = 1
 
-// В концовке Logged off призраки останавливаются и смотрят, как герой уходит
+// In the Logged off ending the ghosts stop and watch the hero leave
 const ghostWatch = {
-    pausedAt: null, // с какого момента призраки стоят на месте
-    target: null, // на кого смотрят (точка в сцене)
+    pausedAt: null, // when the ghosts stopped moving
+    target: null, // what they're looking at (a point in the scene)
 }
 
 const ghostTarget = new THREE.Vector3()
@@ -768,13 +768,13 @@ const updateGhosts = (elapsedTime) => {
         const { start, origin, radius, speed, phase } = ghost.userData
         const t = elapsedTime - start
 
-        // Появление: растёт и поднимается со стула (easeOut — быстро в начале, плавно в конце)
+        // Appearing: grows and rises from the chair (easeOut: fast at first, smooth at the end)
         const appear = Math.min(t / GHOST_APPEAR_DURATION, 1)
         const eased = appear * (2 - appear)
         ghost.scale.setScalar(eased * ghostVisibility)
 
-        // Потом бродит по кругу. Вычитаем cos/sin(phase), чтобы круг начинался ровно от стула.
-        // Если призраки остановились — время блуждания замирает на моменте остановки
+        // Then wanders in a circle. Subtract cos/sin(phase) so the circle starts exactly at the chair.
+        // Once the ghosts stop, wander time freezes at the moment they stopped
         const walkedTime = ghostWatch.pausedAt === null ? t : Math.min(t, ghostWatch.pausedAt - start)
         const wanderTime = Math.max(0, walkedTime - GHOST_APPEAR_DURATION)
         const angle = phase + wanderTime * speed
@@ -783,13 +783,13 @@ const updateGhosts = (elapsedTime) => {
         ghost.position.y = THREE.MathUtils.lerp(0.3, 0.9, eased) + Math.sin(elapsedTime * 2 + phase) * 0.08
 
         if (ghostWatch.target) {
-            // Медленно поворачиваемся к герою. Призрак «смотрит» по +z, поэтому atan2(dx, dz)
+            // Slowly turn towards the hero. The ghost faces +z, hence atan2(dx, dz)
             ghostTarget.copy(ghostWatch.target).sub(ghost.position)
             const targetAngle = Math.atan2(ghostTarget.x, ghostTarget.z)
             const turn = Math.atan2(Math.sin(targetAngle - ghost.rotation.y), Math.cos(targetAngle - ghost.rotation.y))
             ghost.rotation.y += turn * 0.05
         } else if (wanderTime > 0) {
-            // Поворачиваем лицом по направлению движения (касательная к кругу)
+            // Face the direction of movement (tangent to the circle)
             ghost.rotation.y = Math.atan2(-Math.sin(angle) * speed, Math.cos(angle) * speed)
         }
     }
@@ -797,8 +797,8 @@ const updateGhosts = (elapsedTime) => {
 
 /**
  * Story timeline
- * Каждое следующее увольнение происходит быстрее предыдущего:
- * interval = firstInterval * acceleration ^ firedCount, но не меньше minInterval
+  * Each firing comes sooner than the previous one:
+  * interval = firstInterval * acceleration ^ firedCount, but never less than minInterval
  */
 const story = {
     autoplay: true,
@@ -810,7 +810,7 @@ const story = {
     nextFireAt: 3,
 }
 
-// 0 — начало истории, 1 — уволены все
+// 0 is the start of the story, 1 means everyone is fired
 const getStoryProgress = () => story.firedCount / colleagues.length
 
 const updateStory = (elapsedTime) => {
@@ -827,7 +827,7 @@ const updateStory = (elapsedTime) => {
 
 /**
  * News feed
- * Карточки прилетают из темноты к голове героя. Чем дальше история — тем их больше и тем они быстрее
+  * Cards fly out of the dark towards the hero's head. The further the story goes, the more there are and the faster they fly
  */
 const accents = {
     news: '#ff5a5a',
@@ -855,7 +855,7 @@ const newsFeed = [
     { label: 'Changelog', text: 'Your framework is now legacy', accent: accents.ai },
 ]
 
-// Одна текстура на каждый текст: если карточка повторяется, не рисуем её заново
+// One texture per text: if a card repeats, don't draw it again
 const cardTextures = new Map()
 const getCardTexture = (item) => {
     if (!cardTextures.has(item.text)) cardTextures.set(item.text, createCardTexture(item))
@@ -866,14 +866,14 @@ const flyingCards = []
 
 /**
  * Bursts
- * Ночь идёт не ровным потоком, а с двумя сценами. В 22:00 — cold open: гаснет лампа у соседа через стол
- * и прилетает залп из трёх уведомлений, игрок с первых секунд занят и понимает, о чём игра.
- * В 02:00 — волна сокращений: гаснут сразу две лампы и прилетает второй залп, середина ночи не провисает.
- * После каждого залпа — короткая пауза, потом обычный поток
+  * The night isn't an even stream; it has two set pieces. At 22:00, a cold open: the lamp of the colleague across the desk goes out
+  * and a volley of three notifications arrives, so the player is busy from the first seconds and gets what the game is about.
+  * At 02:00, a wave of layoffs: two lamps go out at once and a second volley arrives, so the middle of the night doesn't sag.
+  * After each volley there is a short pause, then the regular stream
  */
 const BURSTS = [
     {
-        at: 0, // доля смены
+        at: 0, // fraction of the shift
         fire: 'neighbour',
         cards: [
             { label: 'Slack · #general', text: 'Your access to #team-platform has been removed', accent: accents.slack },
@@ -891,10 +891,10 @@ const BURSTS = [
         ],
     },
 ]
-const BURST_FIRE_DELAY = 0.3 // лампа гаснет чуть раньше карточек
-const BURST_CARD_STEP = 0.7 // интервал между карточками залпа
-const BURST_BREATH = 3.5 // пауза после залпа, прежде чем пойдёт обычный поток
-const bursts = { queue: [] } // события по времени: { at, fire } или { at, item }
+const BURST_FIRE_DELAY = 0.3 // the lamp goes out slightly before the cards
+const BURST_CARD_STEP = 0.7 // interval between cards in a volley
+const BURST_BREATH = 3.5 // pause after a volley before the regular stream resumes
+const bursts = { queue: [] } // timed events: { at, fire } or { at, item }
 
 const getNearestColleague = () => {
     let nearest = null
@@ -910,7 +910,7 @@ const getNearestColleague = () => {
     return nearest
 }
 
-// Ставит в очередь все залпы ночи. Вызывается в beginShift, когда длина смены уже известна
+// Queues all of the night's volleys. Called in beginShift, once the shift length is known
 const scheduleBursts = (elapsedTime) => {
     bursts.queue = []
     for (const burst of BURSTS) {
@@ -919,12 +919,12 @@ const scheduleBursts = (elapsedTime) => {
         burst.cards.forEach((item, index) => {
             bursts.queue.push({ at: start + BURST_FIRE_DELAY + 0.2 + index * BURST_CARD_STEP, item, last: index === burst.cards.length - 1 })
         })
-        // Залп в самом начале: обычный поток ждёт, пока он закончится
+        // A volley at the very start: the regular stream waits until it's over
         if (burst.at === 0) {
             news.nextSpawnAt = start + BURST_FIRE_DELAY + 0.2 + (burst.cards.length - 1) * BURST_CARD_STEP + BURST_BREATH
         }
     }
-    // Обычные увольнения начнутся через обычный интервал после соседа, а не через startDelay
+    // Regular firings start one regular interval after the neighbour, not after startDelay
     story.nextFireAt = elapsedTime + BURST_FIRE_DELAY + story.firstInterval * story.acceleration
 }
 
@@ -946,7 +946,7 @@ const updateBursts = (elapsedTime) => {
         }
         if (event.item) {
             spawnCard(event.item, elapsedTime)
-            // После последней карточки залпа — пауза в обычном потоке
+            // After the last card of a volley, pause the regular stream
             if (event.last) news.nextSpawnAt = Math.max(news.nextSpawnAt, elapsedTime + BURST_BREATH)
         }
     }
@@ -955,7 +955,7 @@ const updateBursts = (elapsedTime) => {
 const news = {
     nextSpawnAt: 1.5,
     feedIndex: 0,
-    // Интервалы и скорость в начале и в конце истории
+    // Intervals and speed at the start and at the end of the story
     spawnIntervalStart: 3.5,
     spawnIntervalEnd: 0.9,
     flightDurationStart: 9,
@@ -968,10 +968,10 @@ const DISMISS_DURATION = 0.25
 
 /**
  * Noise
- * С Middle часть уведомлений — шум: рассылки, LinkedIn, #random. Они серые и полупрозрачные,
- * чтобы их можно было отличить от важных с первого взгляда, не читая текст.
- * Шум безвреден: долетел — ничего не случилось, кликнул — просто потратил время. Новых правил нет,
- * игрок сам замечает, что серые можно не ловить, и учится выбирать, на что тратить клики
+  * From Middle on, some notifications are noise: mailing lists, LinkedIn, #random. They are grey and semi-transparent,
+  * so they can be told apart from important ones at a glance, without reading the text.
+  * Noise is harmless: if it lands, nothing happens; if you click it, you just wasted time. No new rules:
+  * players notice on their own that grey ones can be ignored and learn to choose where to spend their clicks
  */
 const NOISE_ACCENT = '#6b7280'
 const NOISE_OPACITY = 0.7
@@ -986,14 +986,14 @@ const noiseFeed = [
     { label: 'Email · Facilities', text: 'Reminder: the 3rd floor printer is still broken' },
 ].map((item) => ({ ...item, accent: NOISE_ACCENT, noise: true }))
 
-// Долю шума задаёт уровень (game.noiseChance). На Junior — 0, лента как была
+// The level sets the share of noise (game.noiseChance). On Junior it's 0, the feed is as before
 const nextFeedItem = () => {
     if (Math.random() < game.noiseChance) return pickRandom(noiseFeed)
     return newsFeed[news.feedIndex++ % newsFeed.length]
 }
 
-// Случайная точка на кольце вокруг героя, где-то в темноте.
-// Сектор со стороны камеры пропускаем: оттуда карточка летит прямо в объектив и раздувается на пол-экрана мыльным пятном
+// A random point on a ring around the hero, somewhere in the dark.
+// Skip the sector on the camera side: a card from there flies straight into the lens and blows up into a blurry blob covering half the screen
 const CAMERA_SIDE_GAP = THREE.MathUtils.degToRad(50)
 const randomSpawnPoint = () => {
     const cameraAngle = Math.atan2(camera.position.z - heroHead.z, camera.position.x - heroHead.x)
@@ -1006,12 +1006,12 @@ const randomSpawnPoint = () => {
     )
 }
 
-// from — откуда вылетает (по умолчанию случайная точка в темноте), duration — фиксированное время полёта.
-// Возвращает созданную карточку
+// from: where it starts (a random point in the dark by default); duration: a fixed flight time.
+// Returns the created card
 const spawnCard = (item, elapsedTime, { from = randomSpawnPoint(), duration: fixedDuration } = {}) => {
     const { texture, aspect } = getCardTexture(item)
-    // depthTest: false — карточку не закрывают лампы, провода и призраки: её надо успеть прочитать и кликнуть.
-    // fog: false — дальние карточки не тонут в тумане. Порядок: надписи (5) → карточки (6) → HOLD TO WORK (10)
+    // depthTest: false so lamps, cords and ghosts never hide the card: it has to be read and clicked in time.
+    // fog: false so distant cards don't sink into the fog. Order: labels (5) → cards (6) → HOLD TO WORK (10)
     const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, depthTest: false, fog: false, opacity: 0 })
     )
@@ -1021,7 +1021,7 @@ const spawnCard = (item, elapsedTime, { from = randomSpawnPoint(), duration: fix
     sprite.position.copy(from)
     scene.add(sprite)
 
-    // Длительность полёта зависит от расстояния: карточка, родившаяся рядом, долетает быстрее
+    // Flight time depends on distance: a card spawned closer arrives sooner
     const baseDuration = THREE.MathUtils.lerp(news.flightDurationStart, news.flightDurationEnd, getNightDifficulty())
     const averageRadius = (SPAWN_RADIUS_MIN + SPAWN_RADIUS_MAX) / 2 * SPAWN_SCALE
     const duration = fixedDuration ?? Math.max(1.5, baseDuration * from.distanceTo(heroHead) / averageRadius)
@@ -1044,17 +1044,17 @@ const spawnCard = (item, elapsedTime, { from = randomSpawnPoint(), duration: fix
 const removeCard = (index) => {
     const card = flyingCards[index]
     scene.remove(card.sprite)
-    card.sprite.material.dispose() // текстуру не трогаем — она в кэше
+    card.sprite.material.dispose() // leave the texture alone, it's cached
     flyingCards.splice(index, 1)
 }
 
-// Закрыл уведомление — стало чуть спокойнее, но иногда на его месте тут же появляется новое
+// Dismissing a notification brings a little relief, but sometimes a new one pops up in its place
 const dismissCard = (card) => {
     const elapsedTime = clock.getElapsedTime()
     card.dismissedAt = elapsedTime
     sound.pop()
 
-    // Шум: закрылся, и всё. Ни очков, ни облегчения, ни новой карточки — только потраченное время
+    // Noise: it closes and that's it. No points, no relief, no new card, just time spent
     if (card.item.noise) return
 
     addDismissScore(card.sprite.position)
@@ -1064,7 +1064,7 @@ const dismissCard = (card) => {
     }
     game.stress = Math.max(0, game.stress - game.stressReliefPerDismiss)
 
-    // Во время обучения новых карточек не подкидываем — игрок учится на одной
+    // No extra cards during the tutorial: the player learns on a single one
     if (!isTutorial() && Math.random() < game.respawnChance) {
         const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
             .normalize()
@@ -1078,8 +1078,8 @@ const updateNews = (elapsedTime) => {
 
     if (experience.phase === 'running' && !isTutorial() && !shift.over && elapsedTime >= news.nextSpawnAt) {
         spawnCard(nextFeedItem(), elapsedTime)
-        // Линейно растёт частота (карточек в секунду), а не уменьшается интервал. Иначе 1/интервал
-        // к утру взлетает гиперболой: до 04:00 ровно, а последний час — почти вдвое больше карточек
+        // Increase the rate (cards per second) linearly rather than shrinking the interval. Otherwise 1/interval
+        // shoots up hyperbolically towards morning: steady until 04:00, then almost twice as many cards in the last hour
         const rate = THREE.MathUtils.lerp(1 / news.spawnIntervalStart, 1 / news.spawnIntervalEnd, progress)
         news.nextSpawnAt = elapsedTime + 1 / rate
     }
@@ -1087,7 +1087,7 @@ const updateNews = (elapsedTime) => {
     for (let i = flyingCards.length - 1; i >= 0; i--) {
         const card = flyingCards[i]
 
-        // Закрытая карточка коротко «лопается»: растёт и исчезает
+        // A dismissed card briefly "pops": it grows and vanishes
         if (card.dismissedAt !== null) {
             const dismissT = (elapsedTime - card.dismissedAt) / DISMISS_DURATION
             if (dismissT >= 1) {
@@ -1099,28 +1099,28 @@ const updateNews = (elapsedTime) => {
             continue
         }
 
-        // Концовка Frozen: время остановилось, карточки так и висят в воздухе вокруг героя
+        // Frozen ending: time has stopped and the cards just hang in the air around the hero
         if (experience.cardsFrozen) continue
 
         const t = (elapsedTime - card.start) / card.duration // 0 → 1
 
         if (t >= 1) {
             removeCard(i)
-            // Шум долетел — и ничего. Безвредно
+            // Noise landed and nothing happens. Harmless
             if (!card.item.noise) onCardHit()
             else showCallout('noise', 'Grey ones are noise — <strong>safe to ignore</strong>', heroHead)
             continue
         }
 
-        // Первый шум за ночь, когда он уже на виду (на старте он ещё в темноте за краем экрана)
+        // The night's first noise card, once it's actually visible (at spawn it's still in the dark off-screen)
         if (card.item.noise && t > CALLOUT_CARD_PROGRESS) {
             showCallout('noise', 'Grey ones are noise — <strong>safe to ignore</strong>', card.sprite.position)
         }
 
-        // t * t — медленно в начале, быстро в конце: карточка «набрасывается»
+        // t * t: slow at first, fast at the end, so the card "pounces"
         card.sprite.position.lerpVectors(card.from, heroHead, t * t)
 
-        // Появляется в начале, тает и уменьшается у самой головы
+        // Fades in at the start, fades and shrinks right at the head
         const fadeIn = Math.min(t / 0.1, 1)
         const fadeOut = Math.min((1 - t) / 0.15, 1)
         card.sprite.material.opacity = Math.min(fadeIn, fadeOut) * card.maxOpacity
@@ -1130,7 +1130,7 @@ const updateNews = (elapsedTime) => {
 
 /**
  * Job applications
- * Счётчик на втором мониторе: откликов всё больше, ответов — только отказы
+  * The counter on the second monitor: more and more applications, and the only replies are rejections
  */
 const rejections = [
     "We'll get back to you",
@@ -1142,7 +1142,7 @@ const rejections = [
 ]
 
 const applications = {
-    sent: 211, // он откликается уже несколько месяцев
+    sent: 211, // he's been applying for months
     interviews: 0,
     lastReply: rejections[0],
     nextAt: 1,
@@ -1165,7 +1165,7 @@ const drawJobScreen = () => {
         context.font = `500 22px ${font}`
         context.fillText('sent', 32, 160)
 
-        // Ноль интервью — красный. Первое приглашение (только на рассвете) — зелёное
+        // Zero interviews is red. The first invitation (only at dawn) is green
         context.fillStyle = applications.interviews > 0 ? '#34d399' : '#ff6b6b'
         context.font = `400 72px ${font}`
         context.fillText(String(applications.interviews), 300, 128)
@@ -1173,7 +1173,7 @@ const drawJobScreen = () => {
         context.font = `500 22px ${font}`
         context.fillText('interviews', 302, 160)
 
-        // Моноширинный шрифт широкий: режем фразу, чтобы влезла в экран
+        // Monospace is wide: truncate the phrase so it fits on the screen
         context.fillStyle = '#c9d6dc'
         context.font = `italic 400 20px ${font}`
         const reply = applications.lastReply.length > 36
@@ -1183,10 +1183,10 @@ const drawJobScreen = () => {
     })
 }
 drawJobScreen()
-// Canvas не ждёт веб-шрифт: перерисовываем экран, когда IBM Plex Mono загрузится
+// Canvas doesn't wait for web fonts: redraw the screen once IBM Plex Mono has loaded
 monoFontReady.then(drawJobScreen)
 
-// Ещё 1–3 отклика, и иногда — новый отказ
+// 1–3 more applications, and sometimes a new rejection
 const sendApplications = () => {
     applications.sent += 1 + Math.floor(Math.random() * 3)
     if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
@@ -1208,7 +1208,7 @@ const sizes = {
     pixelRatio: Math.min(window.devicePixelRatio, 2),
 }
 
-// Спрайты-подсказки пересчитывают размер при повороте экрана
+// Hint sprites recompute their size when the screen rotates
 const spriteScaleUpdaters = []
 
 window.addEventListener('resize', () => {
@@ -1229,18 +1229,18 @@ window.addEventListener('resize', () => {
 /**
  * Camera
  */
-// На телефоне весь офис не нужен: важнее герой и то, что к нему летит.
-// Поэтому на вертикальном экране камера ближе, угол чуть шире, а надписи и карточки крупнее
+// On a phone the whole office isn't needed: the hero and what's flying at him matter more.
+// So in portrait the camera is closer, the angle a bit wider, and labels and cards are larger
 const isPortrait = () => sizes.width < sizes.height
 const getCameraFov = () => (isPortrait() ? 55 : 45)
 const CAMERA_DISTANCE_PORTRAIT = 12
-// На широком экране камера тоже ближе, чем в исходной точке (≈13.6): герой и карточки в 1.5 раза крупнее, а комната всё ещё видна
+// On wide screens the camera is also closer than the original spot (≈13.6): the hero and cards are 1.5× larger and the room is still visible
 const CAMERA_DISTANCE_LANDSCAPE = 9
 const getSpriteScale = () => (isPortrait() ? 1.3 : 1)
-// Карточкам — ещё крупнее: на них текст, и его надо успеть прочитать на лету
+// Cards get even larger: they carry text that has to be read on the fly
 const getCardScale = () => (isPortrait() ? 1.5 : 1)
-// Карточки рождаются ближе к герою, чем край офиса: иначе на узком экране половину полёта они за кадром.
-// Одинаково для любой ориентации — так темп игры не зависит от того, как держат телефон
+// Cards spawn closer to the hero than the edge of the office, otherwise on a narrow screen they spend half the flight off-frame.
+// Same for any orientation, so the pace doesn't depend on how the phone is held
 const SPAWN_SCALE = 0.75
 
 const camera = new THREE.PerspectiveCamera(getCameraFov(), sizes.width / sizes.height, 0.1, 100)
@@ -1250,7 +1250,7 @@ scene.add(camera)
 const controls = new OrbitControls(camera, canvas)
 controls.target.copy(heroDesk.position).add(new THREE.Vector3(0, 0.8, 0))
 controls.enableDamping = true
-const MAX_POLAR_ANGLE = Math.PI * 0.45 // не даём заглянуть под пол
+const MAX_POLAR_ANGLE = Math.PI * 0.45 // don't let the camera look under the floor
 controls.maxPolarAngle = MAX_POLAR_ANGLE
 controls.minDistance = 3
 controls.maxDistance = 22
@@ -1263,13 +1263,13 @@ applyCameraDistance()
 
 /**
  * Camera modes
- * Во время смены камера почти зафиксирована: офис можно чуть повернуть, но не развернуть боком,
- * не приблизить и не уехать панорамой — случайный свайп мимо карточки иначе ломает весь кадр.
- * Свободная камера — в режиме Look around (без игры) и на финальном экране
+  * During the shift the camera is nearly fixed: the office can be turned a little, but not sideways,
+  * zoomed or panned; otherwise a stray swipe that misses a card ruins the whole frame.
+  * The camera is free in Look around mode (no game) and on the final screen
  */
 const gameplayView = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target))
-const GAMEPLAY_ROTATE_RANGE = THREE.MathUtils.degToRad(15) // насколько можно повернуть офис влево-вправо
-const GAMEPLAY_TILT_RANGE = THREE.MathUtils.degToRad(8) // и вверх-вниз
+const GAMEPLAY_ROTATE_RANGE = THREE.MathUtils.degToRad(15) // how far the office can be turned left and right
+const GAMEPLAY_TILT_RANGE = THREE.MathUtils.degToRad(8) // and up and down
 
 const lockCamera = () => {
     controls.minAzimuthAngle = gameplayView.theta - GAMEPLAY_ROTATE_RANGE
@@ -1291,8 +1291,8 @@ const unlockCamera = () => {
     controls.rotateSpeed = 1
 }
 
-// На стартовом экране камера облетает офис, так что к началу смены она может смотреть откуда угодно.
-// Плавно возвращаем её в игровой ракурс и только потом ставим ограничения — иначе кадр дёрнется к границе
+// On the start screen the camera orbits the office, so by the time the shift starts it can be facing anywhere.
+// Ease it back to the gameplay view first and only then apply the limits, otherwise the frame snaps to the boundary
 const CAMERA_RETURN_DURATION = 1.2
 const cameraReturn = { active: false, progress: 0, from: new THREE.Spherical() }
 const cameraOffset = new THREE.Vector3()
@@ -1308,7 +1308,7 @@ const updateCameraReturn = (deltaTime) => {
     cameraReturn.progress = Math.min(1, cameraReturn.progress + deltaTime / CAMERA_RETURN_DURATION)
     const t = cameraReturn.progress
     const eased = t * t * (3 - 2 * t)
-    // Поворачиваем по короткой дуге, даже если автоповорот накрутил больше полного круга
+    // Take the short way round, even if auto-rotate has wound up more than a full turn
     const fullTurn = Math.PI * 2
     const thetaDelta = ((gameplayView.theta - cameraReturn.from.theta) % fullTurn + fullTurn * 1.5) % fullTurn - Math.PI
     const view = new THREE.Spherical(
@@ -1335,18 +1335,18 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping
 
 /**
  * Pointer interaction
- * Raycaster пускает луч из камеры через точку под курсором и ищет, во что он попал
+  * The Raycaster casts a ray from the camera through the point under the cursor and finds what it hits
  */
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
 const cardScreenPosition = new THREE.Vector3()
 
-// Запас вокруг карточки в пикселях: по летящей цели трудно попасть точно, поэтому прощаем промах
+// Padding around a card in pixels: a moving target is hard to hit precisely, so we forgive near misses
 const CARD_HIT_PADDING = 18
 
 /**
- * Ищем карточку под курсором прямо в пикселях экрана, а не лучом:
- * так можно добавить запас вокруг карточки, и попасть по ней намного проще
+  * Find the card under the cursor in screen pixels rather than with a ray:
+  * that lets us add padding around the card and makes it much easier to hit
  */
 const getCardUnderPointer = (event) => {
     const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
@@ -1357,18 +1357,18 @@ const getCardUnderPointer = (event) => {
         if (card.dismissedAt !== null) continue
 
         cardScreenPosition.copy(card.sprite.position).project(camera)
-        if (cardScreenPosition.z > 1) continue // карточка за камерой
+        if (cardScreenPosition.z > 1) continue // card is behind the camera
         const x = (cardScreenPosition.x + 1) / 2 * sizes.width
         const y = (1 - cardScreenPosition.y) / 2 * sizes.height
 
-        // Сколько пикселей экрана занимает одна единица сцены на расстоянии карточки
+        // How many screen pixels one scene unit covers at the card's distance
         const distance = camera.position.distanceTo(card.sprite.position)
         const pixelsPerUnit = sizes.height / (2 * distance * tanHalfFov)
         const halfWidth = card.sprite.scale.x * pixelsPerUnit / 2 + CARD_HIT_PADDING
         const halfHeight = card.sprite.scale.y * pixelsPerUnit / 2 + CARD_HIT_PADDING
 
         const isInside = Math.abs(event.clientX - x) <= halfWidth && Math.abs(event.clientY - y) <= halfHeight
-        // Если карточки перекрываются, берём ближайшую к камере — она нарисована сверху
+        // If cards overlap, take the one closest to the camera: it's drawn on top
         if (isInside && distance < closestDistance) {
             closestCard = card
             closestDistance = distance
@@ -1379,7 +1379,7 @@ const getCardUnderPointer = (event) => {
 }
 
 const isPointerOn = (event, object) => {
-    // Переводим пиксели в координаты от -1 до 1, которые ждёт Raycaster
+    // Convert pixels to the -1..1 coordinates the Raycaster expects
     pointer.x = (event.clientX / sizes.width) * 2 - 1
     pointer.y = -(event.clientY / sizes.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
@@ -1389,7 +1389,7 @@ const isPointerOn = (event, object) => {
 const isPointerOnMonitor = (event) => isPointerOn(event, workHitbox)
 const isPointerOnLamp = (event) => canLogOff() && isPointerOn(event, lampHitbox)
 
-// Пока палец или кнопка мыши заняты карточкой или монитором, камеру не крутим
+// While a finger or mouse button is busy with a card or the monitor, don't rotate the camera
 let isPointerBusy = false
 
 const holdPointer = () => {
@@ -1408,8 +1408,8 @@ const releasePointer = () => {
 canvas.addEventListener('pointerdown', (event) => {
     if (experience.phase !== 'running') return
 
-    // Карточку закрываем сразу при нажатии, а не при отпускании:
-    // иначе за 100–200 мс между ними быстрая карточка успевает улететь из-под курсора
+    // Dismiss the card on press, not on release:
+    // in the 100–200 ms between them a fast card can fly out from under the cursor
     const card = getCardUnderPointer(event)
     if (card) {
         dismissCard(card)
@@ -1417,15 +1417,15 @@ canvas.addEventListener('pointerdown', (event) => {
         return
     }
 
-    // Зажали монитор — герой работает
+    // Holding the monitor: the hero works
     if (isPointerOnMonitor(event)) {
         game.working = true
         holdPointer()
         return
     }
 
-    // Зажали свою лампу — свет медленно гаснет; додержал до конца — выключил и ушёл.
-    // Удержание, а не тап: на телефоне лампа рядом с монитором, и случайный тап раньше обрывал ночь
+    // Holding his own lamp: the light slowly dims; hold to the end and he switches it off and leaves.
+    // A hold rather than a tap: on phones the lamp is next to the monitor, and a stray tap used to end the night
     if (isPointerOnLamp(event)) {
         lampHold.holding = true
         holdPointer()
@@ -1433,7 +1433,7 @@ canvas.addEventListener('pointerdown', (event) => {
 })
 
 canvas.addEventListener('pointerup', releasePointer)
-// Палец ушёл с экрана или браузер отменил касание — тоже отпускаем
+// Finger left the screen or the browser cancelled the touch: release too
 canvas.addEventListener('pointercancel', releasePointer)
 canvas.addEventListener('pointerleave', releasePointer)
 
@@ -1481,16 +1481,16 @@ newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight 
 
 /**
  * Experience
- * Фазы истории: intro (стартовый экран) → running → ending (закрыл ноутбук, рассвет) → done
+  * Story phases: intro (start screen) → running → ending (laptop closed, dawn) → done
  */
 const experience = {
     phase: 'intro',
     ending: null, // 'calm' | 'fired' | 'burnout' | 'frozen' | 'loggedOff'
     endingsFound: new Set(),
     endingTime: '',
-    endingStats: null, // цифры этой ночи для текста концовки: время, сколько закрыл, сколько пропустил
-    cardsFrozen: false, // концовка Frozen: карточки замирают в воздухе
-    aftermathShown: false, // для концовки burnout: показали ли уже пустой офис после вспышки
+    endingStats: null, // this night's numbers for the ending text: time, how many dismissed, how many missed
+    cardsFrozen: false, // Frozen ending: cards freeze in mid-air
+    aftermathShown: false, // burnout ending: whether the empty office after the flash has been shown
     endingStart: 0,
     lastIntensity: -1,
 }
@@ -1548,11 +1548,11 @@ const ui = {
     exploreBack: document.querySelector('[data-explore-back]'),
 }
 
-// На сенсорных экранах пишем «Tap» вместо «Click»
+// On touch screens say "Tap" instead of "Click"
 const actionWord = window.matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'
 for (const element of document.querySelectorAll('[data-action-word]')) element.textContent = actionWord
 
-// Пока висит стартовый экран, камера медленно облетает офис
+// While the start screen is up, the camera slowly orbits the office
 controls.autoRotate = true
 controls.autoRotateSpeed = 0.3
 
@@ -1577,10 +1577,10 @@ const startShift = () => {
 
 /**
  * Look around
- * Режим без игры: офис стоит, никого не увольняют, камера свободная — можно покрутить, приблизить и пройтись.
- * Выход — Esc или кнопка, страница просто перезагружается в стартовый экран
+  * No-game mode: the office is static, nobody gets fired, the camera is free to rotate, zoom and pan.
+  * Exit with Esc or the button; the page simply reloads back to the start screen
  */
-// Чтобы при панораме не уехать в пустоту за стенами офиса
+// Keeps panning from drifting into the void beyond the office walls
 const EXPLORE_BOUNDS = new THREE.Box3(new THREE.Vector3(-9, 0.3, -7), new THREE.Vector3(9, 3, 7))
 
 const startExplore = () => {
@@ -1610,16 +1610,16 @@ window.addEventListener('keydown', (event) => {
 })
 
 /**
- * Look around: офис живёт сам
- * Те же события, что и в смене, только реже и без последствий: изредка гаснет лампа и поднимается призрак,
- * к герою медленно летят уведомления (кликать не нужно — они тают у головы), на втором мониторе копятся отказы.
- * Когда в офисе почти никого не осталось, кто-то щёлкает рубильником — и всё сначала
+  * Look around: the office lives on its own
+  * The same events as during a shift, just rarer and without consequences: now and then a lamp goes out and a ghost rises,
+  * notifications drift slowly towards the hero (no need to click, they melt at his head), rejections pile up on the second monitor.
+  * When the office is almost empty, someone flips the breaker and it all starts over
  */
-const AMBIENT_FIRE_EVERY = [5, 9] // секунды между увольнениями
-const AMBIENT_CARD_EVERY = [3, 5] // между уведомлениями
-const AMBIENT_CARD_FLIGHT = 10 // уведомления летят медленнее, чем в игре
+const AMBIENT_FIRE_EVERY = [5, 9] // seconds between firings
+const AMBIENT_CARD_EVERY = [3, 5] // between notifications
+const AMBIENT_CARD_FLIGHT = 10 // notifications fly slower than in the game
 const AMBIENT_APPLICATION_EVERY = 2.5
-const AMBIENT_RELIGHT_WHEN_LEFT = 5 // сколько коллег должно остаться, чтобы офис «перезапустился»
+const AMBIENT_RELIGHT_WHEN_LEFT = 5 // how many colleagues are left when the office "restarts"
 const ambient = { nextFireAt: 0, nextCardAt: 0, nextApplicationAt: 0 }
 
 const startAmbient = (elapsedTime) => {
@@ -1644,7 +1644,7 @@ const updateAmbient = (elapsedTime) => {
 
     if (elapsedTime >= ambient.nextCardAt) {
         ambient.nextCardAt = elapsedTime + randomBetween(AMBIENT_CARD_EVERY)
-        // Только настоящие новости: серый шум без игры ничего не объясняет
+        // Real news only: grey noise explains nothing without the game
         spawnCard(pickRandom(newsFeed), elapsedTime, { duration: AMBIENT_CARD_FLIGHT })
     }
 
@@ -1654,7 +1654,7 @@ const updateAmbient = (elapsedTime) => {
     }
 }
 
-// Таймеры истории отсчитываем от момента, когда смена реально началась (после обучения), а не от загрузки страницы
+// Story timers count from when the shift actually started (after the tutorial), not from page load
 const beginShift = () => {
     const elapsedTime = clock.getElapsedTime()
     story.nextFireAt = elapsedTime + story.startDelay
@@ -1667,18 +1667,18 @@ const beginShift = () => {
 
 /**
  * Clock in
- * Смену начинают удержанием — та же механика, что и работа за монитором, так что игрок учится ей до старта.
- * Отпустил раньше времени — полоса сползает назад
+  * The shift starts with a hold, the same mechanic as working at the monitor, so the player learns it before starting.
+  * Let go too early and the bar slides back
  */
 const HOLD_DURATION = 0.9
 const clockIn = { holding: false, progress: 0 }
 
-// Кнопок «clock in» две: на экране и внутри handbook. Держим ту, на которой палец
+// There are two clock-in buttons: on the screen and inside the handbook. Track the one under the finger
 let holdButton = null
 
 const beginHold = (button) => {
     if (experience.phase !== 'intro') return
-    sound.start() // это жест пользователя — можно завести звук: гул нарастает, пока держишь
+    sound.start() // this is a user gesture, so audio can start: the hum swells while you hold
     clockIn.holding = true
     holdButton = button
     button.classList.add('is-holding')
@@ -1692,23 +1692,23 @@ const endHold = () => {
 for (const button of ui.starts) {
     button.addEventListener('pointerdown', (event) => {
         try {
-            button.setPointerCapture(event.pointerId) // палец может съехать с кнопки — удержание не прервётся
+            button.setPointerCapture(event.pointerId) // the finger may slide off the button without breaking the hold
         } catch {}
         beginHold(button)
     })
     button.addEventListener('pointerup', endHold)
     button.addEventListener('pointercancel', endHold)
     button.addEventListener('lostpointercapture', endHold)
-    button.addEventListener('contextmenu', (event) => event.preventDefault()) // долгое нажатие на телефоне не открывает меню
-    // Клавиатура и скринридеры присылают click с detail === 0 — для них смена стартует сразу, без удержания
+    button.addEventListener('contextmenu', (event) => event.preventDefault()) // a long press on a phone doesn't open the menu
+    // Keyboards and screen readers send click with detail === 0: for them the shift starts right away, no hold
     button.addEventListener('click', (event) => {
         if (event.detail === 0) startShift()
     })
 }
 
 /**
- * Handbook — нативный <dialog>: фокус, Esc и top layer браузер даёт сам.
- * Закрываем ещё кликом по затемнению (клик попадает в сам dialog, а не в .handbook-sheet)
+  * Handbook is a native <dialog>: the browser handles focus, Esc and the top layer.
+  * It also closes on a backdrop click (the click lands on the dialog itself, not on .handbook-sheet)
  */
 const closeHandbook = () => {
     if (!ui.handbook.open) return
@@ -1730,7 +1730,7 @@ ui.handbook.addEventListener('close', () => {
     endHold()
 })
 ui.handbook.addEventListener('cancel', (event) => {
-    event.preventDefault() // Esc — тоже через анимацию закрытия
+    event.preventDefault() // Esc also goes through the closing animation
     closeHandbook()
 })
 ui.handbook.addEventListener('click', (event) => {
@@ -1751,16 +1751,16 @@ const updateClockIn = (deltaTime) => {
     }
 }
 
-// Первый клик где угодно на стартовом экране заводит гул офиса — дальше экран уже звучит
+// The first click anywhere on the start screen starts the office hum, so the screen has sound from then on
 window.addEventListener('pointerdown', () => {
     if (experience.phase === 'intro') sound.start()
 })
 
 /**
  * Intro lights
- * Пока висит стартовый экран, лампы коллег гаснут по одной — подзаголовок сбывается у игрока на глазах.
- * Когда почти все погасли, кто-то щёлкает рубильником, и всё начинается заново.
- * Меняем только яркость (setDeskPower), а не state: смена стартует с полностью освещённым офисом
+  * While the start screen is up, colleagues' lamps go out one by one: the subtitle comes true before the player's eyes.
+  * When nearly all are out, someone flips the breaker and it starts over.
+  * Only brightness changes (setDeskPower), not state: the shift starts with a fully lit office
  */
 const introLights = { nextAt: 2.5, flickering: null, flickerStart: 0, dark: new Set(), relightAt: 0, minute: -1 }
 const introClock = document.querySelector('[data-intro-clock]')
@@ -1775,7 +1775,7 @@ const restoreIntroLights = () => {
 const updateIntroLights = (elapsedTime) => {
     if (experience.phase !== 'intro') return
 
-    // Часы в углу: 21:58, через минуту 21:59 — и замирают. В 22:00 начинается смена
+    // The clock in the corner: 21:58, a minute later 21:59, then it stops. The shift starts at 22:00
     const minute = Math.min(Math.floor(elapsedTime / 60), 1)
     if (minute !== introLights.minute) {
         introLights.minute = minute
@@ -1807,7 +1807,7 @@ const updateIntroLights = (elapsedTime) => {
     if (elapsedTime < introLights.nextAt) return
     const lit = colleagues.filter((candidate) => !introLights.dark.has(candidate))
     if (lit.length <= 2) {
-        introLights.relightAt = elapsedTime + 6 // посидеть в темноте
+        introLights.relightAt = elapsedTime + 6 // sit in the dark for a while
         return
     }
     introLights.flickering = pickRandom(lit)
@@ -1817,8 +1817,8 @@ const updateIntroLights = (elapsedTime) => {
 }
 /**
  * Sound toggle
- * Выбор запоминаем в localStorage, чтобы после перезагрузки звук остался выключенным.
- * localStorage может быть недоступен (например, в приватном режиме), поэтому оборачиваем в try/catch
+  * The choice is saved in localStorage so the sound stays off after a reload.
+  * localStorage may be unavailable (e.g. in private mode), hence the try/catch
  */
 const MUTE_STORAGE_KEY = 'nightmare-office:muted'
 const muteLabel = document.querySelector('[data-mute-label]')
@@ -1842,14 +1842,14 @@ try {
 
 ui.mute.addEventListener('click', toggleMute)
 
-// Если Safari приостановил звук (свернули вкладку, был звонок), возобновляем при следующем касании
+// If Safari suspended audio (tab hidden, a phone call), resume on the next touch
 window.addEventListener('pointerdown', sound.resume)
-window.addEventListener('touchend', sound.resume) // старые iOS считают жестом только touchend
+window.addEventListener('touchend', sound.resume) // older iOS only treats touchend as a gesture
 document.addEventListener('visibilitychange', () => {
     if (!document.hidden) sound.resume()
 })
 window.addEventListener('keydown', (event) => {
-    // Не перехватываем M, когда печатают в поле Debug-панели
+    // Don't hijack M while typing in a Debug panel field
     const isTyping = event.target instanceof Element && event.target.closest('input, textarea')
     if (event.key.toLowerCase() !== 'm' || isTyping) return
     toggleMute()
@@ -1857,8 +1857,8 @@ window.addEventListener('keydown', (event) => {
 
 /**
  * Shift clock
- * Смена идёт с 22:00 до 06:00. Её длина в секундах подбирается так,
- * чтобы к 06:00 успели уволить всех коллег
+  * The shift runs from 22:00 to 06:00. Its length in seconds is chosen so that
+  * every colleague has been fired by 06:00
  */
 const shift = {
     start: 0,
@@ -1873,18 +1873,18 @@ const getShiftDuration = () => {
     for (let fired = 1; fired < colleagues.length; fired++) {
         total += Math.max(story.minInterval, story.firstInterval * story.acceleration ** fired)
     }
-    return total + FLICKER_DURATION + 3 // небольшая пауза после последнего увольнения
+    return total + FLICKER_DURATION + 3 // a short pause after the last firing
 }
 
 const getShiftFraction = (elapsedTime) =>
     THREE.MathUtils.clamp((elapsedTime - shift.start) / shift.duration, 0, 1)
 
 /**
- * Сложность внутри ночи: 0 в 22:00 → 1 в 06:00. От неё зависят спад Performance, частота и скорость карточек.
- * Раньше сложность считалась по числу уволенных, а увольнения к утру идут всё чаще — и последние 20% ночи
- * сложность прыгала с 0.68 до 1: ровная ночь и стена в конце. Теперь она растёт по времени, почти линейно.
- * Кривая 1 — ровный рост без стены под утро. Пустоту в начале и в середине закрывают залпы (Bursts). Туман, мигание лампы и звук
- * по-прежнему идут за увольнениями (getStoryProgress): это атмосфера, а не сложность
+  * Difficulty within the night: 0 at 22:00 → 1 at 06:00. It drives the Performance decay and the rate and speed of cards.
+  * It used to follow the number of fired colleagues, but firings speed up towards morning, so in the last 20% of the night
+  * difficulty jumped from 0.68 to 1: an even night and then a wall. Now it grows with time, almost linearly.
+  * A curve of 1 means steady growth with no wall at dawn. The volleys (Bursts) fill the quiet start and middle. Fog, lamp flicker and sound
+  * still follow the firings (getStoryProgress): that's atmosphere, not difficulty
  */
 const DIFFICULTY_CURVE = 1
 
@@ -1908,7 +1908,7 @@ const endShift = () => {
     ui.shiftOver.hidden = false
     game.working = false
 
-    // Утро: все уведомления, что ещё летят, тихо исчезают
+    // Morning: every notification still in flight quietly disappears
     const elapsedTime = clock.getElapsedTime()
     for (const card of flyingCards) {
         if (card.dismissedAt === null) card.dismissedAt = elapsedTime
@@ -1919,7 +1919,7 @@ ui.goHome.addEventListener('click', () => startEnding('calm'))
 
 /**
  * Tension
- * Чем больше уволено, тем гуще туман, тем чаще мигает лампа героя и сильнее дрожит камера
+  * The more people are fired, the thicker the fog, the more the hero's lamp flickers and the harder the camera shakes
  */
 const cameraShake = new THREE.Vector3()
 
@@ -1929,23 +1929,23 @@ const updateTension = (elapsedTime) => {
     const tension = experience.phase === 'running' ? getStoryProgress() : 0
     scene.fog.density = params.fogDensity + params.fogDensityGrowth * tension
 
-    // Во второй половине истории лампа героя начинает коротить
+    // In the second half of the story the hero's lamp starts shorting out
     let lampPower = 1
-    // На стартовом экране лампа героя изредка коротит — одна-две короткие просадки за полминуты
+    // On the start screen the hero's lamp occasionally dips: one or two short drops every half minute
     if (experience.phase === 'intro' && !prefersReducedMotion && hashNoise(Math.floor(elapsedTime * 10)) < 0.012) lampPower = 0.2
     if (tension > 0.5 && hashNoise(Math.floor(elapsedTime * 10)) < (tension - 0.5) * 0.4) lampPower = 0.25
-    // Пока держат лампу, свет плавно уходит — это и есть индикатор прогресса
+    // While the lamp is held, the light fades smoothly: that is the progress indicator
     lampPower *= 1 - lampHold.progress * 0.9
     heroLight.intensity = params.heroLightIntensity * lampPower
     setDeskPower(heroDesk, lampPower)
 
-    // tension меняется ступеньками, так что звук обновляем только при изменении
+    // tension changes in steps, so only update the sound when it changes
     if (tension !== experience.lastIntensity) {
         sound.setIntensity(tension)
         experience.lastIntensity = tension
     }
 
-    // Дрожание: сумма синусов разной частоты выглядит как случайный шум
+    // Shake: a sum of sines at different frequencies looks like random noise
     const amplitude = params.cameraShake * tension * tension
     cameraShake.set(
         Math.sin(elapsedTime * 37) * Math.sin(elapsedTime * 13),
@@ -1956,46 +1956,46 @@ const updateTension = (elapsedTime) => {
 
 /**
  * Game
- * Две шкалы тянут в разные стороны:
- * Performance растёт, пока держишь монитор, и всё время падает сама (к концу смены — быстрее)
- * Stress растёт, когда уведомление долетает до головы, и снижается, когда его закрываешь
+  * Two meters pull in opposite directions:
+  * Performance grows while you hold the monitor and constantly drains on its own (faster towards the end of the shift)
+  * Stress grows when a notification reaches the head and drops when you dismiss one
  */
-const DANGER_LEVEL = 25 // ниже (или выше — для Stress) этой отметки шкала краснеет
+const DANGER_LEVEL = 25 // below this mark (above it for Stress) the meter turns red
 
 const game = {
     performance: 100,
     stress: 0,
     working: false,
-    hitFlash: 0, // вспышка виньетки при попадании карточки: 1 → 0
+    hitFlash: 0, // vignette flash when a card hits: 1 → 0
 
-    workRate: 16, // сколько Performance в секунду даёт работа
-    performanceDecayStart: 2, // сколько Performance в секунду теряется в начале смены
-    performanceDecayEnd: 6, // ... и в конце
+    workRate: 16, // Performance per second gained by working
+    performanceDecayStart: 2, // Performance per second lost at the start of the shift
+    performanceDecayEnd: 6, // ... and at the end
     stressPerHit: 8,
     stressReliefPerDismiss: 2,
-    stressDecay: 1.5, // сколько Stress в секунду уходит само
-    respawnChance: 0.5, // шанс, что на месте закрытой карточки появится новая
-    noiseChance: 0, // доля безвредного шума среди уведомлений (с Middle, см. Noise и Levels)
+    stressDecay: 1.5, // Stress per second that fades on its own
+    respawnChance: 0.5, // chance that a new card appears where one was dismissed
+    noiseChance: 0, // share of harmless noise among notifications (from Middle on, see Noise and Levels)
 
-    // Что игрок делал этой ночью — по этому выбираем концовку и пишем её текст
-    dismissed: 0, // сколько уведомлений закрыл
-    missed: 0, // сколько долетело до головы
-    lastActionAt: null, // когда последний раз работал или закрывал карточку
+    // What the player did this night: used to pick the ending and write its text
+    dismissed: 0, // notifications dismissed
+    missed: 0, // notifications that reached the head
+    lastActionAt: null, // last time the player worked or dismissed a card
 
-    // Очки
+    // Score
     score: 0,
-    combo: 0, // сколько карточек закрыто подряд без пропущенных
-    hasWorked: false, // работал ли игрок хоть раз — пока нет, показываем подсказку над монитором
+    combo: 0, // cards dismissed in a row without a miss
+    hasWorked: false, // whether the player has worked at all; until then the hint above the monitor shows
     workPointsPerSecond: 5,
     dismissPoints: 10,
-    comboStep: 5, // каждые 5 карточек подряд множитель растёт на 1
+    comboStep: 5, // every 5 cards in a row the multiplier grows by 1
     maxMultiplier: 5,
     calmBonus: 500,
 }
 
 const getMultiplier = () => Math.min(game.maxMultiplier, 1 + Math.floor(game.combo / game.comboStep))
 
-// Переводим точку сцены в пиксели экрана — чтобы показать «+20» рядом с карточкой
+// Convert a scene point to screen pixels to show "+20" next to the card
 const projectToScreen = (position) => {
     const projected = position.clone().project(camera)
     return { x: (projected.x + 1) / 2 * sizes.width, y: (1 - projected.y) / 2 * sizes.height }
@@ -2008,7 +2008,7 @@ const showPopup = (position, text, isBad = false) => {
     popup.className = isBad ? 'popup is-bad' : 'popup'
     popup.textContent = text
     popup.style.left = `${x}px`
-    popup.style.top = `${y - POPUP_LIFT}px` // чуть выше точки: иначе «+50» ложится прямо на текст карточки
+    popup.style.top = `${y - POPUP_LIFT}px` // slightly above the point, otherwise "+50" lands right on the card text
     ui.popups.append(popup)
     popup.addEventListener('animationend', () => popup.remove())
 }
@@ -2021,22 +2021,22 @@ const addDismissScore = (position) => {
     game.score += points
     showPopup(position, multiplier > 1 ? `+${points} ×${multiplier}` : `+${points}`)
 
-    // Множитель вырос — коротко «подпрыгиваем» надписью комбо
-    // После потолка ×maxMultiplier множитель больше не растёт — и не подпрыгивает
+    // The multiplier went up: briefly bump the combo label
+    // Past the ×maxMultiplier cap the multiplier stops growing, so no more bumps
     if (game.combo % game.comboStep === 0 && game.combo / game.comboStep < game.maxMultiplier) {
         ui.combo.classList.remove('is-bump')
-        void ui.combo.offsetWidth // трюк, чтобы CSS-анимация запустилась заново
+        void ui.combo.offsetWidth // force a reflow so the CSS animation restarts
         ui.combo.classList.add('is-bump')
     }
 }
 
 /**
  * Hold hint
- * Пульсирующая надпись над монитором героя: показывает, что монитор можно зажать.
- * Видна, пока игрок ни разу не поработал, и снова — когда Performance проседает
+  * A pulsing label above the hero's monitor that shows the monitor can be held.
+  * Visible until the player has worked at least once, and again whenever Performance sags
  */
-// Светящаяся подсказка-спрайт. Текстура создаётся сразу и ещё раз, когда загрузится IBM Plex Mono:
-// иначе при первом заходе надпись так и осталась бы запасным шрифтом и с неверной шириной
+// A glowing hint sprite. The texture is created right away and again once IBM Plex Mono has loaded;
+// otherwise on a first visit the label would keep the fallback font and a wrong width
 const HINT_HEIGHT = 0.24
 const createHintSprite = (text, color, materialOptions = {}) => {
     const sprite = new THREE.Sprite(
@@ -2061,7 +2061,7 @@ const createHintSprite = (text, color, materialOptions = {}) => {
     return sprite
 }
 
-// depthTest: false — поверх всего, чтобы герой и карточки её не закрывали
+// depthTest: false: on top of everything so the hero and cards never cover it
 const holdHint = createHintSprite('HOLD TO WORK', '#d4f1ff', { depthTest: false })
 holdHint.renderOrder = 10
 const holdHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 1.62, -0.22))
@@ -2073,13 +2073,13 @@ const updateHoldHint = (elapsedTime) => {
         && (!game.hasWorked || game.performance < DANGER_LEVEL + 15)
     const pulse = 0.5 + 0.5 * Math.sin(elapsedTime * 5)
 
-    // Плавно проявляем и прячем
-    // Во время обучения вместо надписи над монитором показываем большую подсказку (см. Tutorial)
+    // Fade in and out smoothly
+    // During the tutorial a big coach bubble replaces the label above the monitor (see Tutorial)
     const target = needsHint && !isTutorial() ? 0.6 + 0.4 * pulse : 0
     holdHint.material.opacity += (target - holdHint.material.opacity) * 0.15
     holdHint.position.y = holdHintBase.y + Math.sin(elapsedTime * 2.5) * 0.03
 
-    // Экран тоже мерцает зелёным — подсказываем, куда нажимать
+    // The screen also flickers green to hint where to press
     if (needsHint) heroDesk.userData.screen.material.color.lerp(colors.screenWork, 0.15 + 0.35 * pulse)
 }
 
@@ -2097,7 +2097,7 @@ gameFolder.add(game, 'respawnChance').min(0).max(1).step(0.05).name('respawn cha
 const onCardHit = () => {
     if (experience.phase !== 'running' || shift.over) return
 
-    // Учебная карточка долетела — без штрафа, просто запускаем её ещё раз
+    // The tutorial card landed: no penalty, just send it again
     if (isTutorial()) {
         spawnTutorialCard(clock.getElapsedTime())
         return
@@ -2111,12 +2111,12 @@ const onCardHit = () => {
     if (game.combo >= game.comboStep) showPopup(heroHead, 'Combo lost', true)
     game.combo = 0
 
-    // Проверяем выгорание сразу при попадании. Если ждать updateGame, стресс успевает
-    // чуть-чуть спасть (100 → 99.97), и проверка «>= 100» никогда не срабатывает
+    // Check for burnout right on impact. If we waited for updateGame, stress would have time
+    // to decay a hair (100 → 99.97) and the ">= 100" check would never fire
     if (game.stress >= 100) startEnding('burnout')
 }
 
-// HUD обновляется каждый кадр — трогаем DOM, только когда значение правда изменилось
+// The HUD updates every frame: touch the DOM only when a value actually changed
 const hud = {
     score: null,
     multiplier: null,
@@ -2145,7 +2145,7 @@ const updateHud = () => {
     }
     const multiplier = getMultiplier()
     if (multiplier !== hud.multiplier) {
-        // Слово combo на телефоне прячет CSS: с четырёхзначным счётом оно переносится и HUD прыгает
+        // CSS hides the word combo on phones: with a four-digit score it wraps and the HUD jumps
         ui.combo.innerHTML = multiplier > 1 ? `×${multiplier}<span class="hud-combo-word"> combo</span>` : ''
         hud.multiplier = multiplier
     }
@@ -2161,17 +2161,17 @@ const updateGame = (elapsedTime, deltaTime) => {
         return
     }
 
-    // После 06:00 шкалы замирают: смена закончилась, осталось только уйти домой
+    // After 06:00 the meters freeze: the shift is over, all that's left is to go home
     if (shift.over) {
         ui.vignette.style.opacity = Math.max(0, Number(ui.vignette.style.opacity) - deltaTime)
         return
     }
 
-    // Пока идёт обучение, часы стоят, а Performance сама не падает — меняется только от действий игрока
+    // During the tutorial the clock stands still and Performance doesn't drain; only the player's actions change it
     if (!isTutorial()) {
         const shiftFraction = getShiftFraction(elapsedTime)
         ui.clock.textContent = formatShiftTime(shiftFraction)
-        ui.clockPanel.style.setProperty('--night', shiftFraction) // полоска ночи под часами
+        ui.clockPanel.style.setProperty('--night', shiftFraction) // the night bar under the clock
         if (shiftFraction >= 1) {
             endShift()
             return
@@ -2188,7 +2188,7 @@ const updateGame = (elapsedTime, deltaTime) => {
     game.performance = THREE.MathUtils.clamp(game.performance + (work - decay) * deltaTime, 0, 100)
     game.stress = THREE.MathUtils.clamp(game.stress - game.stressDecay * deltaTime, 0, 100)
 
-    // Пока работает: экран светлеет, герой чуть подрагивает над клавиатурой, слышно стук клавиш
+    // While working: the screen brightens, the hero jitters over the keyboard, keys click
     const { screen, person } = heroDesk.userData
     if (game.working) {
         screen.material.color.lerp(colors.screenWork, 0.6)
@@ -2206,17 +2206,17 @@ const updateGame = (elapsedTime, deltaTime) => {
 
 /**
  * Tutorial
- * При первом запуске учим двум действиям прямо в игре: зажать монитор, потом закрыть одно медленное уведомление.
- * Пока идёт обучение, часы стоят, никого не увольняют и стресс не растёт.
- * Пройти обучение заново: открыть страницу с #tutorial в адресе
+  * On first launch the game teaches two actions in place: hold the monitor, then dismiss one slow notification.
+  * During the tutorial the clock stands still, nobody gets fired and stress doesn't rise.
+  * To replay the tutorial, open the page with #tutorial in the URL
  */
 const TUTORIAL_STORAGE_KEY = 'nightmare-office:tutorial-done'
-const TUTORIAL_START_PERFORMANCE = 55 // неполная шкала — чтобы было видно, как работа её наполняет
-const TUTORIAL_CARD_DURATION = 10 // учебная карточка летит медленно, обычные в начале — около 9 с
-const TUTORIAL_DONE_DURATION = 2.5 // сколько висит «Nice!» после обучения
+const TUTORIAL_START_PERFORMANCE = 55 // a partly empty meter, so the player sees work filling it
+const TUTORIAL_CARD_DURATION = 10 // the tutorial card flies slowly; regular ones take about 9 s at the start
+const TUTORIAL_DONE_DURATION = 2.5 // how long "Nice!" stays up after the tutorial
 
 const tutorial = {
-    step: null, // null — обучения нет | 'work' | 'dismiss' | 'done' (смена уже идёт, висит «Nice!»)
+    step: null, // null: no tutorial | 'work' | 'dismiss' | 'done' (shift already running, "Nice!" showing)
     card: null,
     doneAt: 0,
 }
@@ -2237,7 +2237,7 @@ const shouldShowTutorial = () => {
 const setCoach = (html, hasRing = true) => {
     ui.coachText.innerHTML = html
     ui.coach.classList.toggle('has-ring', hasRing)
-    // Перезапускаем появление пузыря, чтобы смену шага было заметно
+    // Restart the bubble's entrance animation so the step change is noticeable
     ui.coachText.classList.remove('is-new')
     void ui.coachText.offsetWidth
     ui.coachText.classList.add('is-new')
@@ -2252,7 +2252,7 @@ const startTutorial = () => {
     setCoach('<span class="rule-key">Hold</span> the monitor to work')
 }
 
-// Карточка вылетает на полпути между героем и камерой, чуть сбоку — так она точно в кадре, даже на узком экране
+// The card spawns halfway between the hero and the camera, slightly to the side, so it's always in frame, even on a narrow screen
 const tutorialSpawnPoint = () => {
     const cameraRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
     return heroHead.clone().lerp(camera.position, 0.5)
@@ -2268,7 +2268,7 @@ const finishTutorial = () => {
     try {
         localStorage.setItem(TUTORIAL_STORAGE_KEY, '1')
     } catch {
-        // без localStorage обучение просто покажется ещё раз
+        // without localStorage the tutorial just shows again next time
     }
     ui.performance.classList.remove('is-coached')
     ui.coachSkip.hidden = true
@@ -2277,7 +2277,7 @@ const finishTutorial = () => {
 
 ui.coachSkip.addEventListener('click', () => {
     if (!isTutorial()) return
-    // Учебную карточку тихо убираем, без очков
+    // Quietly remove the tutorial card, no points
     if (tutorial.card && tutorial.card.dismissedAt === null) tutorial.card.dismissedAt = clock.getElapsedTime()
     tutorial.step = null
     ui.coach.hidden = true
@@ -2288,14 +2288,14 @@ ui.coachSkip.addEventListener('click', () => {
 const updateTutorial = (elapsedTime) => {
     if (tutorial.step === null) return
 
-    // Смена кончилась раньше, чем погасла подсказка, — просто прячем её
+    // The shift ended before the hint faded: just hide it
     if (experience.phase !== 'running') {
         tutorial.step = null
         ui.coach.hidden = true
         return
     }
 
-    // Шаг 1 пройден, когда работа заполнила Performance до конца
+    // Step 1 is done once work has filled Performance to the top
     if (tutorial.step === 'work' && game.performance >= 100) {
         tutorial.step = 'dismiss'
         ui.performance.classList.remove('is-coached')
@@ -2316,7 +2316,7 @@ const updateTutorial = (elapsedTime) => {
         return
     }
 
-    // Подсказка висит над тем, с чем сейчас нужно что-то сделать: монитором, карточкой, а в конце — героем
+    // The hint hovers over whatever needs doing now: the monitor, the card, and at the end the hero
     const anchor = tutorial.step === 'work'
         ? workHitbox.getWorldPosition(tutorialAnchor)
         : tutorial.step === 'dismiss' ? tutorial.card.sprite.position : heroHead
@@ -2327,10 +2327,10 @@ const COACH_FLIP_Y = 190
 const placeCoach = (anchor) => {
     const { x, y } = projectToScreen(anchor)
     ui.coach.style.transform = `translate(${x}px, ${y}px)`
-    // Цель у верхнего края — пузырь под ней, а не поверх HUD и часов
+    // Target near the top edge: put the bubble below it, not over the HUD and clock
     ui.coach.classList.toggle('is-below', y < COACH_FLIP_Y)
 
-    // Пузырь не даём увезти за край экрана, а хвостик всё равно смотрит на цель
+    // Keep the bubble from sliding off-screen while the tail still points at the target
     const halfWidth = ui.coachText.offsetWidth / 2
     const margin = 16
     const offset = THREE.MathUtils.clamp(x, margin + halfWidth, sizes.width - margin - halfWidth) - x
@@ -2339,21 +2339,21 @@ const placeCoach = (anchor) => {
 
 /**
  * Callouts
- * Тот же пузырь, что в обучении, но разовый: когда за ночь впервые встречается что-то новое
- * (сейчас — серый шум), над ним на несколько секунд всплывает пояснение. Новое правило он не вводит,
- * просто снимает вопрос «а это что?»
+  * The same bubble as in the tutorial, but one-off: the first time something new shows up during a night
+  * (currently grey noise), an explanation pops up above it for a few seconds. It doesn't introduce a new rule,
+  * it just answers "wait, what's this?"
  */
 const CALLOUT_DURATION = 4
-const CALLOUT_CARD_PROGRESS = 0.35 // показываем, когда карточка пролетела треть пути и уже на виду
+const CALLOUT_CARD_PROGRESS = 0.35 // show once the card has covered a third of its path and is visible
 
 const callout = {
     shown: new Set(),
-    anchor: null, // точка в сцене, над которой висит пузырь. Живая ссылка — пузырь едет за карточкой
+    anchor: null, // the scene point the bubble hovers over. A live reference, so the bubble follows the card
     until: 0,
 }
 
 const showCallout = (kind, html, anchor) => {
-    // Обучение важнее, и две подсказки разом не показываем
+    // The tutorial takes priority, and we never show two hints at once
     if (callout.shown.has(kind) || tutorial.step !== null || callout.anchor) return
     callout.shown.add(kind)
     callout.anchor = anchor
@@ -2373,11 +2373,11 @@ const updateCallout = (elapsedTime) => {
 }
 
 /**
- * Frozen или Very responsive
- * Обе концовки — Performance упала до нуля. Но если игрок всё это время закрывал уведомления,
- * его уволили за «отзывчивость». А если просто сидел и смотрел — он замер
+  * Frozen or Very responsive
+  * Both endings mean Performance hit zero. But if the player kept dismissing notifications the whole time,
+  * he got fired for being "responsive". If he just sat and watched, he froze
  */
-const FROZEN_AFTER = 8 // столько секунд без единого действия — и герой «замер»
+const FROZEN_AFTER = 8 // this many seconds without a single action and the hero has "frozen"
 const RESPONSIVE_MIN_DISMISSED = 5
 
 const isFrozen = (elapsedTime) =>
@@ -2385,7 +2385,7 @@ const isFrozen = (elapsedTime) =>
     || elapsedTime - game.lastActionAt > FROZEN_AFTER
     || game.dismissed < RESPONSIVE_MIN_DISMISSED
 
-// Выключить свою лампу можно только во второй половине ночи — когда она сама начинает коротить
+// The hero can switch off his own lamp only in the second half of the night, once it starts shorting out on its own
 const LOG_OFF_FROM = 0.5
 const canLogOff = () => experience.phase === 'running' && !shift.over && getStoryProgress() >= LOG_OFF_FROM
 
@@ -2396,7 +2396,7 @@ const updateLampHold = (deltaTime) => {
         lampHold.progress = 0
         return
     }
-    // Отпустил раньше — свет быстро возвращается
+    // Let go early and the light comes back quickly
     const speed = lampHold.holding ? 1 / LAMP_HOLD_DURATION : -3 / LAMP_HOLD_DURATION
     lampHold.progress = THREE.MathUtils.clamp(lampHold.progress + speed * deltaTime, 0, 1)
     if (lampHold.progress === 1) {
@@ -2407,17 +2407,17 @@ const updateLampHold = (deltaTime) => {
 
 /**
  * Lamp hint
- * Тусклая надпись у лампы героя — тихий намёк, что можно просто уйти
+  * A dim label by the hero's lamp: a quiet hint that you can just leave
  */
-// Подсказка честно говорит, что будет: ночь закончится. Но не запрещает — это тайная концовка
-// fog: false (внутри createHintSprite) — иначе туман съедает надпись почти целиком
+// The hint is honest about what happens (the night ends), but doesn't forbid it: this is the secret ending
+// fog: false (inside createHintSprite), otherwise the fog eats almost the whole label
 const lampHint = createHintSprite('hold to switch off · go home', '#ffd9a0', { depthWrite: false })
 const lampHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 3.05, 0))
 lampHint.position.copy(lampHintBase)
 scene.add(lampHint)
 
 const updateLampHint = (elapsedTime) => {
-    // Дышит медленно и еле заметно — в отличие от яркой HOLD TO WORK
+    // Breathes slowly and barely visibly, unlike the bright HOLD TO WORK
     const target = canLogOff() ? 0.45 + 0.2 * Math.sin(elapsedTime * 1.2) : 0
     lampHint.material.opacity += (target - lampHint.material.opacity) * 0.05
     lampHint.position.y = lampHintBase.y + Math.sin(elapsedTime * 0.8) * 0.04
@@ -2425,17 +2425,17 @@ const updateLampHint = (elapsedTime) => {
 
 /**
  * Endings
- * Финал идёт в два такта:
- *   story   — последнее уведомление героя, прилетает в сцену как игровая карточка (шутка внутри мира)
- *   summary — итоги терминалом, как интро: что случилось (title), почему (cause), реплика (line),
- *             подсказка на следующую ночь (tip) и лог смены
- * Голос итогов — на «ты», как в интро и handbook. Цифры именно этой ночи берём из stats
+  * The finale has two beats:
+  *   story   — the hero's last notification, flying into the scene like an in-game card (an in-world joke)
+  *   summary — the results in terminal style, like the intro: what happened (title), why (cause), a remark (line),
+  *             a tip for the next night (tip) and the shift log
+  * The summary speaks to the player as "you", like the intro and the handbook. This night's numbers come from stats
  *
- * calm      — дожил до 06:00 и ушёл домой: призраки уходят с рассветом, на втором мониторе — первое приглашение
- * fired     — Performance = 0, но он всю ночь закрывал уведомления: увольнение «за отзывчивость»
- * frozen    — Performance = 0, а он просто сидел: время замирает, карточки висят в воздухе
- * burnout   — Stress = 100: вспышка и звон в ушах, потом тёмный пустой офис
- * loggedOff — секретная: сам выключил свою лампу и ушёл, призраки смотрят ему вслед
+  * calm      — made it to 06:00 and went home: the ghosts leave at dawn, the first interview invite shows on the second monitor
+  * fired     — Performance = 0, but he dismissed notifications all night: fired for being "responsive"
+  * frozen    — Performance = 0 and he just sat there: time stops, cards hang in the air
+  * burnout   — Stress = 100: a flash and ringing ears, then a dark, empty office
+  * loggedOff — secret: he switched off his own lamp and left while the ghosts watched him go
  */
 const endings = {
     calm: {
@@ -2452,7 +2452,7 @@ const endings = {
             title: 'Are you free Tuesday?',
             meta: `reply to application #${stats.applications}`,
         }),
-        // Уже после итогов — ещё одно уведомление. Ночь пережита, но ничего не закончилось
+        // One more notification after the summary. The night is survived, but nothing is over
         sting: { sender: 'Slack · Manager', time: '06:01', text: 'Morning! Quick sync? 🙂' },
     },
     fired: {
@@ -2521,15 +2521,15 @@ const endings = {
             title: '🔴 Offline',
             text: `${stats.unread} unread. They’ll keep.`,
         }),
-        scoreCounts: false, // счёт этой ночи не считается — и это нормально
+        scoreCounts: false, // tonight's score doesn't count, and that's fine
     },
 }
 
 const ENDINGS_STORAGE_KEY = 'nightmare-office:endings'
 const BEST_SCORE_STORAGE_KEY = 'nightmare-office:best'
 
-// Рекорд у каждого уровня свой: очки на Junior и на Lead не сравнить.
-// У Junior старый ключ — чтобы рекорды, поставленные до появления уровней, не потерялись
+// Each level keeps its own best score: Junior and Lead scores aren't comparable.
+// Junior uses the old key so best scores from before levels existed aren't lost
 const getBestScoreKey = () =>
     currentLevelKey === 'junior' ? BEST_SCORE_STORAGE_KEY : `${BEST_SCORE_STORAGE_KEY}:${currentLevelKey}`
 
@@ -2541,7 +2541,7 @@ const getBestScore = () => {
     }
 }
 
-// Сохраняет рекорд и сообщает, побит ли он
+// Saves the best score and reports whether it was beaten
 const saveBestScore = (score) => {
     const previousBest = getBestScore()
     try {
@@ -2550,7 +2550,7 @@ const saveBestScore = (score) => {
     return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
 }
 
-// Какие концовки зритель уже видел — храним в localStorage, чтобы показывать «2/5»
+// Endings the player has already seen, stored in localStorage to show "2/5"
 const saveEnding = (kind) => {
     try {
         const found = new Set(JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]'))
@@ -2570,13 +2570,13 @@ const dawn = {
     fogDensity: 0.035,
 }
 
-// Камера в финале подлетает к герою
+// In the finale the camera flies in to the hero
 const endingCamera = {
     position: heroDesk.position.clone().add(new THREE.Vector3(2.6, 2, 3.4)),
     target: heroDesk.position.clone().add(new THREE.Vector3(0, 1, 0)),
 }
 
-// Сюда в момент концовки запоминаем, откуда начинаем переход
+// Where the transition starts from, captured when the ending begins
 const endingFrom = {}
 
 const startEnding = (kind) => {
@@ -2587,7 +2587,7 @@ const startEnding = (kind) => {
 
     experience.phase = 'ending'
     experience.ending = kind
-    // Финальный облёт камеры двигает её сам — снимаем игровые ограничения, чтобы они его не обрезали
+    // The final camera move drives the camera itself: drop the gameplay limits so they don't clip it
     cameraReturn.active = false
     unlockCamera()
     experience.endingStart = elapsedTime
@@ -2618,7 +2618,7 @@ const startEnding = (kind) => {
     cameraShake.set(0, 0, 0)
     controls.enabled = false
 
-    // Frozen: карточки остаются висеть там, где их застала остановка времени. В остальных — тают
+    // Frozen: cards stay where time stopped them. In every other ending they fade
     experience.cardsFrozen = kind === 'frozen'
     if (!experience.cardsFrozen) {
         for (const card of flyingCards) {
@@ -2640,7 +2640,7 @@ const startEnding = (kind) => {
     if (kind === 'calm') {
         heroLight.intensity = params.heroLightIntensity
         setDeskPower(heroDesk, 1)
-        // Первое приглашение за всю историю откликов
+        // The first invitation in the whole history of applications
         applications.interviews = 1
         applications.lastReply = 'Are you free Tuesday?'
         drawJobScreen()
@@ -2650,20 +2650,20 @@ const startEnding = (kind) => {
         sound.buzz()
         sound.calm({ chord: false })
     } else if (kind === 'frozen') {
-        // Звук обрывается почти сразу — как будто время остановилось
+        // The sound cuts off almost immediately, as if time stopped
         sound.calm({ chord: false, fade: 0.4 })
     } else if (kind === 'burnout') {
         ui.whiteout.classList.add('is-visible')
         sound.tinnitus()
         sound.calm({ chord: false })
     } else if (kind === 'loggedOff') {
-        // Свет и экраны гаснут сразу — он сам нажал на выключатель
+        // Lights and screens go out at once: he flipped the switch himself
         sound.click()
         heroLight.intensity = 0
         setDeskPower(heroDesk, 0)
         jobMonitorScreen.material.color.setScalar(0)
         monitorGlow.intensity = 0
-        // Призраки останавливаются и смотрят ему вслед
+        // The ghosts stop and watch him go
         ghostWatch.pausedAt = elapsedTime
         ghostWatch.target = new THREE.Vector3()
         sound.calm()
@@ -2672,7 +2672,7 @@ const startEnding = (kind) => {
 
 let stingTimeout = null
 let summaryTimeout = null
-const STORY_BEAT = 2600 // сколько сюжетная карточка висит одна, прежде чем появятся итоги
+const STORY_BEAT = 2600 // how long the story card stays alone before the summary appears
 
 const setText = (element, text) => {
     element.textContent = text ?? ''
@@ -2683,7 +2683,7 @@ const showOutro = (kind) => {
     const ending = endings[kind]
     const stats = experience.endingStats
 
-    // Такт 1: последнее уведомление — в сцене
+    // Beat 1: the last notification, in the scene
     const storyCard = ending.story(stats)
     ui.outro.style.setProperty('--accent', ending.accent)
     ui.outroStorySender.textContent = storyCard.sender
@@ -2692,13 +2692,13 @@ const showOutro = (kind) => {
     setText(ui.outroStoryMeta, storyCard.meta)
     setText(ui.outroStoryText, storyCard.text)
 
-    // Такт 2: итоги
+    // Beat 2: the summary
     ui.outroTitle.innerHTML = ending.title(stats)
     ui.outroCause.textContent = ending.cause(stats)
     ui.outroLine.textContent = ending.line(stats)
     setText(ui.outroTip, ending.tip ? `next night: ${ending.tip}` : '')
 
-    // В концовке Logged off счёт не считается: рекорд не обновляем, а вместо цифры — честная надпись
+    // In the Logged off ending the score doesn't count: keep the best score and show an honest label instead of a number
     const scoreCounts = ending.scoreCounts !== false
     const score = Math.floor(game.score)
     const { best, isNewBest } = scoreCounts ? saveBestScore(score) : { best: getBestScore(), isNewBest: false }
@@ -2724,7 +2724,7 @@ const showOutro = (kind) => {
         return [term, detail]
     }))
 
-    // Дожил до утра — уровень пройден, и можно попробовать следующий
+    // Survived until morning: the level is passed and the next one can be tried
     const nextLevel = LEVEL_ORDER[LEVEL_ORDER.indexOf(currentLevelKey) + 1]
     if (kind === 'calm') markLevelPassed(currentLevelKey)
     if (kind === 'calm' && nextLevel) {
@@ -2733,7 +2733,7 @@ const showOutro = (kind) => {
         ui.promote.hidden = false
     }
 
-    // Не дожил до утра на высоком грейде — можно сделать шаг назад, той же кнопкой
+    // Didn't make it to morning on a high grade: offer a step down with the same button
     const previousLevel = LEVEL_ORDER[LEVEL_ORDER.indexOf(currentLevelKey) - 1]
     if (FAIL_ENDINGS.includes(kind) && DEMOTE_FROM.includes(currentLevelKey) && previousLevel) {
         ui.promote.dataset.next = previousLevel
@@ -2741,7 +2741,7 @@ const showOutro = (kind) => {
         ui.promote.hidden = false
     }
 
-    // Все концовки — слоты: найденные с иконкой, ненайденные пустые. Текущая подсвечена и подписана
+    // Every ending is a slot: found ones show an icon, unfound ones are empty. The current one is highlighted and labelled
     const kinds = Object.keys(endings)
     ui.outroFound.textContent = `${experience.endingsFound.size}/${kinds.length}`
     ui.outroEndings.replaceChildren(...kinds.map((key) => {
@@ -2770,7 +2770,7 @@ const showOutro = (kind) => {
         ui.outroBody.hidden = false
         ui.restart.focus({ preventScroll: true })
 
-        // Последнее уведомление приходит, когда кажется, что всё уже закончилось
+        // The last notification arrives just when it seems to be over
         if (ending.sting) {
             clearTimeout(stingTimeout)
             stingTimeout = setTimeout(() => {
@@ -2783,14 +2783,14 @@ const showOutro = (kind) => {
         }
     }
     summaryTimeout = setTimeout(showSummary, prefersReducedMotion ? 0 : STORY_BEAT)
-    // Нетерпеливым — клик или клавиша сразу показывают итоги
+    // For the impatient: a click or key press shows the summary immediately
     ui.outro.addEventListener('pointerdown', showSummary, { once: true })
     window.addEventListener('keydown', showSummary, { once: true })
 }
 
 /**
- * Restart — «hold to clock in again»: то же удержание, что и в интро.
- * Свой маленький цикл на requestAnimationFrame: игровой tick к этому моменту уже ничего не ждёт
+  * Restart: "hold to clock in again", the same hold as in the intro.
+  * Its own small requestAnimationFrame loop: by this point the game tick isn't waiting for anything
  */
 const restartHold = { holding: false, progress: 0, last: 0, frame: 0 }
 
@@ -2830,13 +2830,13 @@ ui.restart.addEventListener('pointerup', endRestartHold)
 ui.restart.addEventListener('pointercancel', endRestartHold)
 ui.restart.addEventListener('lostpointercapture', endRestartHold)
 ui.restart.addEventListener('contextmenu', (event) => event.preventDefault())
-// Клавиатура и скринридеры — без удержания
+// Keyboards and screen readers: no hold
 ui.restart.addEventListener('click', (event) => {
     if (event.detail === 0) window.location.reload()
 })
 
 const updateCalmEnding = (t, eased) => {
-    const screensOff = Math.min(t * 4, 1) // экраны гаснут в первые 2 секунды
+    const screensOff = Math.min(t * 4, 1) // screens go dark in the first 2 seconds
     const lerp = THREE.MathUtils.lerp
 
     scene.background.lerpColors(endingFrom.background, dawn.background, eased)
@@ -2847,16 +2847,16 @@ const updateCalmEnding = (t, eased) => {
     moonLight.intensity = lerp(endingFrom.moonIntensity, dawn.moonIntensity, eased)
     ambientLight.intensity = lerp(endingFrom.ambientIntensity, dawn.ambientIntensity, eased)
 
-    // Рабочий экран гаснет, а второй монитор с приглашением остаётся гореть
+    // The work screen goes dark while the second monitor with the invite stays on
     heroDesk.userData.screen.material.color.lerpColors(colors.screenOn, colors.screenOff, screensOff)
     monitorGlow.intensity = endingFrom.monitorGlow * (1 - screensOff)
 
-    // Призраки не выносят дневного света
+    // Ghosts can't stand daylight
     ghostVisibility = 1 - eased
 }
 
 const updateFiredEnding = (elapsedTime) => {
-    // Лампа героя мигает и гаснет так же, как у коллег, а потом он встаёт призраком
+    // The hero's lamp flickers and goes out just like the colleagues', then he rises as a ghost
     const t = elapsedTime - experience.endingStart
     let power = 0
     if (t < FLICKER_DURATION) {
@@ -2872,8 +2872,8 @@ const updateFiredEnding = (elapsedTime) => {
     monitorGlow.intensity = endingFrom.monitorGlow * power
 }
 
-// Выгорание: вспышка, а когда она спадает — тёмный пустой офис, все лампы погасли.
-// Горит только монитор, и герой, ссутулившись, сидит перед ним
+// Burnout: a flash, and as it fades, a dark empty office with every lamp out.
+// Only the monitor is on, and the hero sits slumped in front of it
 const WHITEOUT_DURATION = 2.5
 
 const updateBurnoutEnding = (elapsedTime) => {
@@ -2895,13 +2895,13 @@ const updateBurnoutEnding = (elapsedTime) => {
     ambientLight.intensity = 0.04
     scene.fog.density = 0.07
 
-    ui.whiteout.classList.remove('is-visible') // CSS плавно уберёт вспышку
+    ui.whiteout.classList.remove('is-visible') // CSS fades the flash out
 }
 
-// Logged off: секунду сидит в темноте, потом встаёт, отходит от стола и уходит по проходу во тьму
+// Logged off: he sits in the dark for a second, then stands up, steps away from the desk and walks down the aisle into the dark
 const LOG_OFF_STAND_AT = 1.2
 const LOG_OFF_WALK_AT = 2.4
-const LOG_OFF_AISLE_Z = 1.5 // проход между рядами столов, в координатах стола
+const LOG_OFF_AISLE_Z = 1.5 // the aisle between desk rows, in desk coordinates
 const LOG_OFF_SPEED = 1.1
 
 const updateLoggedOffEnding = (elapsedTime) => {
@@ -2909,12 +2909,12 @@ const updateLoggedOffEnding = (elapsedTime) => {
     const { person } = heroDesk.userData
     const { torso, thighs } = person.userData
 
-    // Призраки смотрят туда, где сейчас герой
+    // The ghosts look at wherever the hero is now
     heroDesk.localToWorld(ghostWatch.target.copy(person.position).setY(1))
 
     if (t < LOG_OFF_STAND_AT) return
 
-    // Встаёт: ноги вертикально, спина прямо
+    // Standing up: legs vertical, back straight
     torso.rotation.x = 0
     thighs.rotation.x = Math.PI / 2
     thighs.scale.z = 1.9
@@ -2922,14 +2922,14 @@ const updateLoggedOffEnding = (elapsedTime) => {
     const step = Math.abs(Math.sin(t * 8)) * 0.03
 
     if (t < LOG_OFF_WALK_AT) {
-        // Отходит от стола в проход, повернувшись спиной к монитору
+        // Steps away from the desk into the aisle, back turned to the monitor
         const back = (t - LOG_OFF_STAND_AT) / (LOG_OFF_WALK_AT - LOG_OFF_STAND_AT)
         person.rotation.y = Math.PI
         person.position.set(0, 0.1 + step, THREE.MathUtils.lerp(0.65, LOG_OFF_AISLE_Z, back))
         return
     }
 
-    // Поворачивается и уходит по проходу в темноту, прочь от камеры
+    // Turns and walks down the aisle into the dark, away from the camera
     const walked = (t - LOG_OFF_WALK_AT) * LOG_OFF_SPEED
     person.rotation.y = THREE.MathUtils.lerp(Math.PI, Math.PI / 2, Math.min(walked * 2, 1))
     person.position.set(-walked, 0.1 + step, LOG_OFF_AISLE_Z)
@@ -2940,7 +2940,7 @@ const updateEnding = (elapsedTime) => {
 
     const kind = experience.ending
     const t = Math.min((elapsedTime - experience.endingStart) / endings[kind].duration, 1)
-    const eased = t * t * (3 - 2 * t) // smoothstep: плавно в начале и в конце
+    const eased = t * t * (3 - 2 * t) // smoothstep: smooth at the start and at the end
 
     if (kind === 'calm') updateCalmEnding(t, eased)
     if (kind === 'fired') updateFiredEnding(elapsedTime)
@@ -2953,7 +2953,7 @@ const updateEnding = (elapsedTime) => {
     if (t >= 1) {
         experience.phase = 'done'
         controls.enabled = true
-        // Ушёл — его больше нет в офисе
+        // He left: he's no longer in the office
         if (kind === 'loggedOff') heroDesk.userData.person.visible = false
         showOutro(kind)
     }
@@ -2961,14 +2961,14 @@ const updateEnding = (elapsedTime) => {
 
 /**
  * Levels
- * Правила на всех уровнях одни и те же: держи монитор, закрывай уведомления.
- * Уровни меняют только темп: как быстро падает Performance, как часто и как быстро летят карточки,
- * сколько стоит пропущенная — и сколько среди них безвредного шума, который отвлекает.
+  * The rules are the same on every level: hold the monitor, dismiss notifications.
+  * Levels only change the pace: how fast Performance drains, how often and how fast cards fly,
+  * how much a missed one costs, and how much harmless, distracting noise is mixed in.
  *
- * Уровни — ровная лестница: задаём только самый лёгкий (Junior, исходные цифры игры) и самый трудный (Lead),
- * а каждый уровень берёт параметры между ними по своему tier: 0, 1/3, 2/3, 1.
- * Так шаг сложности между соседними уровнями всегда одинаковый, и крутить нужно только два набора цифр.
- * Подбирать удобно в #debug → Game / News, потом переносить сюда
+  * Levels form an even ladder: only the easiest (Junior, the game's original numbers) and the hardest (Lead) are defined,
+  * and every level takes values between them by its tier: 0, 1/3, 2/3, 1.
+  * So the difficulty step between neighbouring levels is always the same, and only two sets of numbers need tuning.
+  * Tune them in #debug → Game / News, then copy the numbers here
  */
 const LEVEL_EASIEST = {
     game: {
@@ -2987,7 +2987,7 @@ const LEVEL_HARDEST = {
         performanceDecayStart: 4,
         performanceDecayEnd: 10,
         stressPerHit: 12,
-        stressDecay: 1, // стресс уходит медленнее — пропущенные карточки копятся, и вторая шкала тоже давит
+        stressDecay: 1, // stress fades slower: missed cards pile up and the second meter adds pressure too
         respawnChance: 0.55,
         noiseChance: 0.3,
     },
@@ -3001,7 +3001,7 @@ const levels = {
     lead: { tier: 1, name: 'Lead', description: 'No one is coming to help. Good luck.' },
 }
 
-// Параметры уровня: каждое число — между Junior и Lead, по tier уровня
+// Level parameters: each number lies between Junior and Lead, by the level's tier
 const getLevelParams = (group, tier) => Object.fromEntries(
     Object.keys(LEVEL_EASIEST[group]).map((key) => [
         key,
@@ -3010,8 +3010,8 @@ const getLevelParams = (group, tier) => Object.fromEntries(
 )
 
 const LEVEL_ORDER = Object.keys(levels)
-// С каких грейдов после проигрыша предлагаем шаг вниз, и какие концовки считаются проигрышем
-// (loggedOff — не проигрыш: герой ушёл сам)
+// Grades from which a step down is offered after a loss, and which endings count as a loss
+// (loggedOff isn't a loss: the hero left on his own)
 const DEMOTE_FROM = ['senior', 'lead']
 const FAIL_ENDINGS = ['fired', 'burnout', 'frozen']
 const LEVEL_STORAGE_KEY = 'nightmare-office:level'
@@ -3020,7 +3020,7 @@ const PASSED_STORAGE_KEY = 'nightmare-office:passed'
 let currentLevelKey = 'junior'
 let currentLevel = levels.junior
 
-// Какие уровни уже пройдены до утра — на стартовом экране у них галочка
+// Levels already survived until morning get a checkmark on the start screen
 const getPassedLevels = () => {
     try {
         return new Set(JSON.parse(localStorage.getItem(PASSED_STORAGE_KEY) || '[]'))
@@ -3044,7 +3044,7 @@ const saveLevel = (key) => {
 }
 
 const applyLevel = (key) => {
-    // hasOwn, а не levels[key]: из localStorage может прийти, например, 'toString'
+    // hasOwn rather than levels[key]: localStorage could hold something like 'toString'
     currentLevelKey = Object.hasOwn(levels, key) ? key : 'junior'
     currentLevel = levels[currentLevelKey]
 
@@ -3069,7 +3069,7 @@ for (const button of ui.levelButtons) {
     })
 }
 
-// Стрелки влево/вправо переключают уровень, как в обычной группе радиокнопок
+// Left/right arrows switch the level, like a regular radio group
 ui.levelButtons[0]?.parentElement.addEventListener('keydown', (event) => {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
     event.preventDefault()
@@ -3097,7 +3097,7 @@ gui.addFolder('Level').add({ level: currentLevelKey }, 'level', LEVEL_ORDER).onC
 })
 gameFolder.add(game, 'noiseChance').min(0).max(1).step(0.01).name('noise share')
 
-// Концовки по кнопке — чтобы не доигрывать смену ради каждой (работает, когда смена уже идёт)
+// Endings on a button, so you don't have to play a whole shift for each (works once a shift is running)
 const endingsFolder = gui.addFolder('Endings').close()
 for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => startEnding(kind) }, kind)
 
@@ -3106,12 +3106,12 @@ for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => start
  */
 let previousTime = 0
 
-// На телефоне текст интро занимает нижнюю половину экрана — сдвигаем кадр, чтобы офис оказался сверху.
-// После старта плавно возвращаем сцену в центр
-const INTRO_PORTRAIT_SHIFT = 0.2 // доля высоты экрана
+// On phones the intro text covers the bottom half of the screen: shift the frame so the office sits on top.
+// After the start, ease the scene back to the center
+const INTRO_PORTRAIT_SHIFT = 0.2 // fraction of the screen height
 let introFraming = 1
-// В финале наоборот: текст итогов слева (на телефоне — снизу), так что герой уезжает вправо (или вверх)
-const OUTRO_LANDSCAPE_SHIFT = 0.18 // доля ширины экрана
+// In the finale it's the other way round: the summary is on the left (at the bottom on phones), so the hero moves right (or up)
+const OUTRO_LANDSCAPE_SHIFT = 0.18 // fraction of the screen width
 let outroFraming = 0
 const updateIntroFraming = (deltaTime) => {
     if (experience.phase !== 'intro') introFraming = Math.max(0, introFraming - deltaTime / 1.2)
@@ -3127,7 +3127,7 @@ const updateIntroFraming = (deltaTime) => {
 const tick = () => {
     clock.update()
     const elapsedTime = clock.getElapsedTime()
-    const deltaTime = elapsedTime - previousTime // шаг уже ограничен в clock.update()
+    const deltaTime = elapsedTime - previousTime // the step is already clamped in clock.update()
     previousTime = elapsedTime
 
     updateStory(elapsedTime)
@@ -3143,7 +3143,7 @@ const tick = () => {
     updateApplications(elapsedTime)
     updateLampHold(deltaTime)
     updateTension(elapsedTime)
-    updateGame(elapsedTime, deltaTime) // после updateTension: поверх его цвета экрана рисуем «работу»
+    updateGame(elapsedTime, deltaTime) // after updateTension: draws the "working" color over its screen color
     updateTutorial(elapsedTime)
     updateCallout(elapsedTime)
     updateHoldHint(elapsedTime)
@@ -3155,7 +3155,7 @@ const tick = () => {
     controls.update()
     if (experience.phase === 'explore') controls.target.clamp(EXPLORE_BOUNDS.min, EXPLORE_BOUNDS.max)
 
-    // Дрожание добавляем только на время рендера, чтобы оно не копилось в позиции камеры
+    // Shake is added only for the render so it doesn't accumulate in the camera position
     camera.position.add(cameraShake)
     renderer.render(scene, camera)
     camera.position.sub(cameraShake)
