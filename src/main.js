@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import GUI from 'lil-gui'
 import { createCardTexture, createGlowLabelTexture, createScreenTexture, monoFontReady } from './canvasText.js'
 import { createSound } from './sound.js'
+import { createClock, hashNoise, isCoarsePointer, pickRandom, prefersReducedMotion, randomBetween, smoothstep } from './utils.js'
 
 /**
  * Base
@@ -27,29 +28,7 @@ const params = {
 }
 
 const sound = createSound()
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-// Our own clock instead of THREE.Clock: it only accumulates a clamped frame step.
-// While the tab is hidden there are no frames, so game time stands still instead of racing ahead
-const MAX_FRAME_STEP = 0.1
-const clock = (() => {
-    let elapsed = 0
-    let last = performance.now()
-    return {
-        update() {
-            const now = performance.now()
-            elapsed += Math.min((now - last) / 1000, MAX_FRAME_STEP)
-            last = now
-        },
-        getElapsedTime: () => elapsed,
-    }
-})()
-
-// Small shared helpers
-const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
-const randomBetween = ([min, max]) => min + Math.random() * (max - min)
-// Deterministic pseudo-noise in 0..1: the same n always gives the same value (lamp flicker)
-const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
+const clock = createClock()
 
 scene.background = new THREE.Color(params.background)
 scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
@@ -1307,7 +1286,7 @@ const updateCameraReturn = (deltaTime) => {
     if (!cameraReturn.active) return
     cameraReturn.progress = Math.min(1, cameraReturn.progress + deltaTime / CAMERA_RETURN_DURATION)
     const t = cameraReturn.progress
-    const eased = t * t * (3 - 2 * t)
+    const eased = smoothstep(t)
     // Take the short way round, even if auto-rotate has wound up more than a full turn
     const fullTurn = Math.PI * 2
     const thetaDelta = ((gameplayView.theta - cameraReturn.from.theta) % fullTurn + fullTurn * 1.5) % fullTurn - Math.PI
@@ -1549,7 +1528,7 @@ const ui = {
 }
 
 // On touch screens say "Tap" instead of "Click"
-const actionWord = window.matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'
+const actionWord = isCoarsePointer() ? 'Tap' : 'Click'
 for (const element of document.querySelectorAll('[data-action-word]')) element.textContent = actionWord
 
 // While the start screen is up, the camera slowly orbits the office
@@ -1595,7 +1574,7 @@ const startExplore = () => {
     if (ui.handbook.open) ui.handbook.close()
     ui.intro.classList.add('is-hidden')
     setTimeout(() => (ui.intro.hidden = true), 1200)
-    ui.exploreHint.textContent = window.matchMedia('(pointer: coarse)').matches
+    ui.exploreHint.textContent = isCoarsePointer()
         ? 'drag to look around · pinch to zoom · two fingers to move'
         : 'drag to look around · scroll to zoom · right-drag to move'
     ui.exploreBar.hidden = false
@@ -2948,7 +2927,7 @@ const updateEnding = (elapsedTime) => {
 
     const kind = experience.ending
     const t = Math.min((elapsedTime - experience.endingStart) / endings[kind].duration, 1)
-    const eased = t * t * (3 - 2 * t) // smoothstep: smooth at the start and at the end
+    const eased = smoothstep(t)
 
     if (kind === 'calm') updateCalmEnding(t, eased)
     if (kind === 'fired') updateFiredEnding(elapsedTime)
@@ -3128,10 +3107,9 @@ let outroFraming = 0
 const updateIntroFraming = (deltaTime) => {
     if (experience.phase !== 'intro') introFraming = Math.max(0, introFraming - deltaTime / 1.2)
     if (experience.phase === 'ending' || experience.phase === 'done') outroFraming = Math.min(1, outroFraming + deltaTime / 2.5)
-    const smooth = (x) => x * x * (3 - 2 * x)
     const portrait = sizes.width < sizes.height
-    const shiftY = portrait ? INTRO_PORTRAIT_SHIFT * Math.max(smooth(introFraming), smooth(outroFraming)) : 0
-    const shiftX = portrait ? 0 : -OUTRO_LANDSCAPE_SHIFT * smooth(outroFraming)
+    const shiftY = portrait ? INTRO_PORTRAIT_SHIFT * Math.max(smoothstep(introFraming), smoothstep(outroFraming)) : 0
+    const shiftX = portrait ? 0 : -OUTRO_LANDSCAPE_SHIFT * smoothstep(outroFraming)
     if (shiftX || shiftY) camera.setViewOffset(sizes.width, sizes.height, sizes.width * shiftX, sizes.height * shiftY, sizes.width, sizes.height)
     else if (camera.view && camera.view.enabled) camera.clearViewOffset()
 }
