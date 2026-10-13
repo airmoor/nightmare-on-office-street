@@ -8,7 +8,7 @@
     <meta name="theme-color" content="#05060a" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-    <!-- Превью ссылки в Discord, X, Telegram, LinkedIn. Картинка — static/og-image.jpg, 1200×630 -->
+    <!-- Link previews in Discord, X, Telegram, LinkedIn. Image: static/og-image.jpg, 1200×630 -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Nightmare on Office Street" />
     <meta property="og:title" content="Nightmare on Office Street" />
@@ -30,7 +30,7 @@
   <body>
     <canvas class="webgl"></canvas>
 
-    <!-- Стартовый экран: тёмный офис, горит один монитор. Нужен ещё и потому, что браузер включает звук только после клика -->
+    <!-- Start screen: a dark office with one monitor on. Also needed because browsers only enable audio after a click -->
     <section class="overlay intro" data-intro>
       <div class="intro-grain" aria-hidden="true"></div>
       <p class="intro-clock" aria-hidden="true"><span data-intro-clock>21:58</span></p>
@@ -39,7 +39,7 @@
         <h1 class="intro-title">Nightmare<br />on Office<br />Street</h1>
         <p class="intro-lead">Somewhere in an open office,<br />the lights are going out one by one.</p>
 
-        <!-- Выбор уровня. Каждый следующий добавляет одну новую механику, описание под кнопками меняет JS -->
+        <!-- Level picker. JS updates the description under the buttons -->
         <div class="levels">
           <span class="levels-label" id="levels-label">Role</span>
           <div class="levels-options" role="radiogroup" aria-labelledby="levels-label">
@@ -51,15 +51,15 @@
           <p class="level-desc" data-level-desc aria-live="polite"></p>
         </div>
 
-        <!-- Смена начинается удержанием — это сразу учит главной механике игры (держать монитор) -->
+        <!-- The shift starts with a hold, which teaches the core mechanic (holding the monitor) right away -->
         <button type="button" class="clockin" data-start aria-label="Hold to clock in">
           <span class="clockin-text" aria-hidden="true"><span class="clockin-prompt">&gt;</span> hold to clock in<span class="clockin-cursor">_</span></span>
           <span class="clockin-track" aria-hidden="true"><span class="clockin-fill"></span></span>
         </button>
 
-        <!-- Правила по запросу: открываются поверх сцены (десктоп — панель справа, телефон — bottom sheet), страница не двигается -->
+        <!-- Rules on demand: they open over the scene (side panel on desktop, bottom sheet on phones) without moving the page -->
         <button type="button" class="handbook-toggle" data-handbook-open aria-haspopup="dialog" aria-controls="handbook">read the handbook<span class="handbook-caret" aria-hidden="true"></span></button>
-        <!-- Без игры: просто походить по офису и посмотреть сцену -->
+        <!-- No game: just walk around the office and look at the scene -->
         <button type="button" class="handbook-toggle explore-toggle" data-explore>or just look around<span class="handbook-caret" aria-hidden="true"></span></button>
 
         <dialog class="handbook" id="handbook" data-handbook aria-labelledby="handbook-title">
@@ -84,7 +84,7 @@
             <p class="handbook-tip">Clear several in a row for a combo.</p>
             <p class="handbook-lamp">Your lamp is yours. You can always switch it off.</p>
             </div>
-            <!-- Прочитал правила — начинаешь смену прямо отсюда -->
+            <!-- Read the rules? Start the shift right from here -->
             <button type="button" class="clockin handbook-clockin" data-start aria-label="Hold to clock in">
               <span class="clockin-text" aria-hidden="true"><span class="clockin-prompt">&gt;</span> hold to clock in<span class="clockin-cursor">_</span></span>
               <span class="clockin-track" aria-hidden="true"><span class="clockin-fill"></span></span>
@@ -94,10 +94,10 @@
       </div>
     </section>
 
-    <!-- Красная виньетка по краям экрана: чем выше стресс, тем она сильнее -->
+    <!-- Red vignette around the edges: the higher the stress, the stronger it gets -->
     <div class="vignette" data-vignette></div>
 
-    <!-- Шкалы, очки и правила -->
+    <!-- Meters, score and rules -->
     <div class="hud" data-hud hidden>
       <div class="hud-score">
         <span class="meter-label">Score</span>
@@ -118,23 +118,23 @@
       </ul>
     </div>
 
-    <!-- Обучение при первом запуске: подсказка висит над тем, что нужно сделать -->
+    <!-- First-run tutorial: the hint hovers over whatever needs to be done -->
     <div class="coach" data-coach hidden>
       <span class="coach-ring"></span>
       <p class="coach-bubble" data-coach-text></p>
     </div>
     <button class="coach-skip" data-coach-skip hidden>Skip tutorial</button>
 
-    <!-- Сюда JS добавляет всплывающие «+20» -->
+    <!-- JS adds the floating "+20" popups here -->
     <div class="popups" data-popups></div>
 
-    <!-- Белая вспышка для концовки «Burnout» -->
+    <!-- White flash for the Burnout ending -->
     <div class="whiteout" data-whiteout></div>
 
-    <!-- Часы смены: цель игры — дотянуть до 06:00 -->
+    <!-- Shift clock: the goal is to hold out until 06:00 -->
     <div class="clock" data-clock-panel hidden>
       <span class="clock-time" data-clock>22:00</span>
-      <!-- Полоска ночи: от 22:00 до 06:00. Точка бежит к утру, заливка теплеет к рассвету. --night (0 → 1) задаёт JS -->
+      <!-- Night bar from 22:00 to 06:00. The dot runs towards morning and the fill warms up at dawn. JS sets --night (0 → 1) -->
       <span class="night" aria-hidden="true">
         <span class="night-edge">22:00</span>
         <span class="night-track"><span class="night-fill"></span><span class="night-dot"></span></span>
@@ -143,14 +143,14 @@
       <span class="clock-goal" data-clock-goal>Survive until 06:00</span>
     </div>
 
-    <!-- Смена закончилась — это победа, а не «сдаться» -->
+    <!-- The shift is over: this is a win, not giving up -->
     <div class="shift-over" data-shift-over hidden>
       <p class="shift-over-title">06:00 — you made it through the night</p>
       <button class="button" data-go-home>Go home 🌅</button>
     </div>
 
-    <!-- Финал в два такта. Сначала сюжет: последнее уведомление героя прилетает в сцену, как карточки в игре.
-         Потом итоги — тем же терминалом, что и интро: слева текст, справа офис, где всё только что случилось -->
+    <!-- The finale has two beats. First the story: the hero's last notification flies into the scene like an in-game card.
+         Then the summary, in the same terminal style as the intro: text on the left, the office where it all happened on the right -->
     <section class="overlay outro" data-outro hidden>
       <div class="intro-grain" aria-hidden="true"></div>
 
@@ -178,19 +178,19 @@
           <span class="outro-endings-name" data-outro-ending-name></span>
         </p>
 
-        <!-- Новая смена — тем же удержанием, что и в интро: игра заканчивается тем же жестом, каким началась -->
+        <!-- A new shift uses the same hold as the intro: the game ends with the same gesture it started with -->
         <button type="button" class="clockin outro-restart" data-restart aria-label="Hold to clock in again">
           <span class="clockin-text" aria-hidden="true"><span class="clockin-prompt">&gt;</span> hold to clock in again<span class="clockin-cursor">_</span></span>
           <span class="clockin-track" aria-hidden="true"><span class="clockin-fill"></span></span>
         </button>
-        <!-- Смена грейда: после спокойной концовки — повышение, после проигрыша на Senior/Lead — шаг вниз -->
+        <!-- Grade change: a promotion after the calm ending, a step down after losing on Senior/Lead -->
         <button type="button" class="outro-promote" data-promote hidden></button>
 
         <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
       </div>
     </section>
 
-    <!-- Ещё одно уведомление уже после финала — выезжает сверху, как пуш на телефоне -->
+    <!-- One more notification after the finale, sliding in from the top like a phone push -->
     <aside class="outro-sting" data-outro-sting hidden>
       <header class="outro-sting-header">
         <span data-outro-sting-sender></span>
@@ -199,14 +199,14 @@
       <p class="outro-sting-text" data-outro-sting-text></p>
     </aside>
 
-    <!-- Режим Look around: подсказка по управлению и выход -->
+    <!-- Look around mode: controls hint and exit -->
     <div class="explore-bar" data-explore-bar hidden>
       <span class="explore-hint" data-explore-hint></span>
       <button type="button" class="explore-back" data-explore-back>[esc] back</button>
     </div>
 
-    <!-- Кнопка звука видна всегда, даже на стартовом экране. Клавиша M делает то же самое.
-         Состояние передаёт подпись (Sound on / Sound off), поэтому aria-pressed не нужен -->
+    <!-- The sound button is always visible, even on the start screen. The M key does the same.
+         The label carries the state (Sound on / Sound off), so aria-pressed isn't needed -->
     <button type="button" class="mute" data-mute title="Toggle sound (M)">
       <svg class="mute-icon mute-icon-on" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 9v6h4l5 4V5L8 9H4z" />

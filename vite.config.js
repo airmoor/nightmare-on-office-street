@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 
-// Файлы из static/ (превью для соцсетей, favicon) копируются в корень сборки как есть
+// Files in static/ (social preview image, favicon) are copied to the build root as is
 export default defineConfig({
     publicDir: 'static',
 })
