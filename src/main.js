@@ -1693,7 +1693,9 @@ for (const button of ui.starts) {
     button.addEventListener('pointerdown', (event) => {
         try {
             button.setPointerCapture(event.pointerId) // the finger may slide off the button without breaking the hold
-        } catch {}
+        } catch {
+            // already released or unsupported: the hold still works
+        }
         beginHold(button)
     })
     button.addEventListener('pointerup', endHold)
@@ -1829,7 +1831,9 @@ const setMuted = (muted) => {
     muteLabel.textContent = muted ? 'Sound off' : 'Sound on'
     try {
         localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0')
-    } catch {}
+    } catch {
+        // localStorage unavailable (e.g. private mode): nothing to persist
+    }
 }
 
 const toggleMute = () => setMuted(!sound.isMuted())
@@ -2546,7 +2550,9 @@ const saveBestScore = (score) => {
     const previousBest = getBestScore()
     try {
         if (score > previousBest) localStorage.setItem(getBestScoreKey(), String(score))
-    } catch {}
+    } catch {
+        // localStorage unavailable (e.g. private mode): nothing to persist
+    }
     return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
 }
 
@@ -2823,7 +2829,9 @@ const endRestartHold = () => {
 ui.restart.addEventListener('pointerdown', (event) => {
     try {
         ui.restart.setPointerCapture(event.pointerId)
-    } catch {}
+    } catch {
+        // already released or unsupported: the hold still works
+    }
     beginRestartHold()
 })
 ui.restart.addEventListener('pointerup', endRestartHold)
@@ -3034,13 +3042,17 @@ const markLevelPassed = (key) => {
         const passed = getPassedLevels()
         passed.add(key)
         localStorage.setItem(PASSED_STORAGE_KEY, JSON.stringify([...passed]))
-    } catch {}
+    } catch {
+        // localStorage unavailable (e.g. private mode): nothing to persist
+    }
 }
 
 const saveLevel = (key) => {
     try {
         localStorage.setItem(LEVEL_STORAGE_KEY, key)
-    } catch {}
+    } catch {
+        // localStorage unavailable (e.g. private mode): nothing to persist
+    }
 }
 
 const applyLevel = (key) => {

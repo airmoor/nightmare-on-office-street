@@ -41,7 +41,9 @@ const unlockIOSPlayback = () => {
     if (navigator.audioSession) {
         try {
             navigator.audioSession.type = 'playback'
-        } catch {}
+        } catch {
+            // read-only in some Safari versions: playback still works, just not in silent mode
+        }
         return
     }
 
