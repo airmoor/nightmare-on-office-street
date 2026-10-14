@@ -1,13 +1,13 @@
 /**
-  * All sound is generated in code with the Web Audio API: no audio files, no licenses.
-  * Graph: sources (oscillators, noise) → filters → gain → master → speakers
+ * All sound is generated in code with the Web Audio API: no audio files, no licenses.
+ * Graph: sources (oscillators, noise) → filters → gain → master → speakers
  *
-  * Browsers only allow audio after a user gesture,
-  * so start() runs on the first press: holding clock in, Look around, or any tap on the screen
+ * Browsers only allow audio after a user gesture,
+ * so start() runs on the first press: holding clock in, Look around, or any tap on the screen
  *
-  * iOS: Web Audio is silent by default when the ring/silent switch is on.
-  * Safari 17+ lets us declare "this is media playback" via navigator.audioSession.
-  * On older iOS the trick is to loop a silent <audio> element, which switches the phone into media mode
+ * iOS: Web Audio is silent by default when the ring/silent switch is on.
+ * Safari 17+ lets us declare "this is media playback" via navigator.audioSession.
+ * On older iOS the trick is to loop a silent <audio> element, which switches the phone into media mode
  */
 const createSilentWavUrl = () => {
     const sampleRate = 8000

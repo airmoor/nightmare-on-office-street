@@ -182,8 +182,8 @@ h2 {
 }
 
 /**
-  * Intro: a dark office with one monitor on. The UI looks like a terminal on that monitor:
-  * monospace type, cold screen light, no cards and no pill buttons
+ * Intro: a dark office with one monitor on. The UI looks like a terminal on that monitor:
+ * monospace type, cold screen light, no cards and no pill buttons
  */
 .intro {
   align-items: flex-start;
@@ -279,7 +279,7 @@ h2 {
 }
 
 /**
-  * Level picker as a terminal line: role  junior  middle  senior  lead
+ * Level picker as a terminal line: role  junior  middle  senior  lead
  */
 .levels {
   display: grid;
@@ -355,7 +355,7 @@ h2 {
 }
 
 /**
-  * Clock in: hold and the bar fills, let go and it slides back
+ * Clock in: hold and the bar fills, let go and it slides back
  */
 .clockin {
   --hold: 0;
@@ -418,8 +418,8 @@ h2 {
 }
 
 /**
-  * Handbook: rules on demand. A native <dialog> over the scene, so the page doesn't move.
-  * Desktop: a side panel with the office dimmed underneath. Phone: a bottom sheet
+ * Handbook: rules on demand. A native <dialog> over the scene, so the page doesn't move.
+ * Desktop: a side panel with the office dimmed underneath. Phone: a bottom sheet
  */
 .handbook-toggle {
   display: inline-flex;
@@ -931,7 +931,7 @@ h2 {
 
 /**
  * Tutorial coach
-  * .coach sits exactly on the target point (JS moves it with transform); the ring surrounds the point, the bubble sits above it
+ * .coach sits exactly on the target point (JS moves it with transform); the ring surrounds the point, the bubble sits above it
  */
 .coach {
   position: fixed;
@@ -1160,9 +1160,9 @@ h2 {
 }
 
 /**
-  * Night bar under the clock: 22:00 ——●—— 06:00
-  * JS sets --night (0 → 1). The gradient spans the whole track and clip-path reveals it up to the dot,
-  * so the color at the end of the fill warms from night blue to dawn orange on its own
+ * Night bar under the clock: 22:00 ——●—— 06:00
+ * JS sets --night (0 → 1). The gradient spans the whole track and clip-path reveals it up to the dot,
+ * so the color at the end of the fill warms from night blue to dawn orange on its own
  */
 .clock {
   --night: 0;
@@ -1332,7 +1332,7 @@ h2 {
 }
 
 /**
-  * Outro sting: a notification that arrives after the finale
+ * Outro sting: a notification that arrives after the finale
  */
 .outro-sting {
   position: fixed;
@@ -1383,8 +1383,8 @@ h2 {
 }
 
 /**
-  * Outro: the summary uses the intro layout, terminal on the left, office on the right.
-  * First a single story card in the scene (.outro-story), then after a couple of seconds the summary (.outro-body)
+ * Outro: the summary uses the intro layout, terminal on the left, office on the right.
+ * First a single story card in the scene (.outro-story), then after a couple of seconds the summary (.outro-body)
  */
 .outro {
   --accent: var(--glow);

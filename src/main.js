@@ -58,7 +58,7 @@ const lightPoolTexture = createLightPoolTexture()
 
 /**
  * Shared geometries & materials
-  * One geometry shared by all desks instead of one per desk: faster
+ * One geometry shared by all desks instead of one per desk: faster
  */
 const geometries = {
     deskTop: new THREE.BoxGeometry(1.6, 0.06, 0.8),
@@ -319,10 +319,10 @@ heroDesk.add(jobMonitor)
 
 /**
  * Code screen
-  * The hero's main monitor shows an editor. While the player holds the monitor, text is typed character by character; let go and the cursor blinks.
-  * Three files on a loop tell the story of the night: an urgent ticket → a performance review self-assessment → a resume.
-  * Light theme: the screen is a light source in the dark office, and the material color (blue, green while working)
-  * still tints the whole image, so the monitor glows as before, it just has something on it now
+ * The hero's main monitor shows an editor. While the player holds the monitor, text is typed character by character; let go and the cursor blinks.
+ * Three files on a loop tell the story of the night: an urgent ticket → a performance review self-assessment → a resume.
+ * Light theme: the screen is a light source in the dark office, and the material color (blue, green while working)
+ * still tints the whole image, so the monitor glows as before, it just has something on it now
  */
 const codeScreen = createScreenTexture({ width: 512, height: 288 })
 heroDesk.userData.screen.material.map = codeScreen.texture
@@ -529,7 +529,7 @@ heroDesk.add(monitorGlow)
 
 /**
  * Firing colleagues
-  * The lamp flickers for ~1.2 seconds, then goes out and the person disappears
+ * The lamp flickers for ~1.2 seconds, then goes out and the person disappears
  */
 const FLICKER_DURATION = 1.2
 
@@ -560,7 +560,7 @@ const fireRandomColleague = () => {
 
 /**
  * Firing labels
-  * The reason for the firing pops up above the desk: it appears, slowly rises and fades
+ * The reason for the firing pops up above the desk: it appears, slowly rises and fades
  */
 const LABEL_LIFETIME = 3.5
 const floatingLabels = []
@@ -640,7 +640,7 @@ const updateColleagues = (elapsedTime) => {
 
 /**
  * Ghosts
-  * A fired colleague rises from the chair as a ghost carrying a box of belongings and wanders around the office
+ * A fired colleague rises from the chair as a ghost carrying a box of belongings and wanders around the office
  */
 const createGhostGeometry = () => {
     // LatheGeometry spins a profile around the Y axis, like a potter's wheel
@@ -776,8 +776,8 @@ const updateGhosts = (elapsedTime) => {
 
 /**
  * Story timeline
-  * Each firing comes sooner than the previous one:
-  * interval = firstInterval * acceleration ^ firedCount, but never less than minInterval
+ * Each firing comes sooner than the previous one:
+ * interval = firstInterval * acceleration ^ firedCount, but never less than minInterval
  */
 const story = {
     autoplay: true,
@@ -806,7 +806,7 @@ const updateStory = (elapsedTime) => {
 
 /**
  * News feed
-  * Cards fly out of the dark towards the hero's head. The further the story goes, the more there are and the faster they fly
+ * Cards fly out of the dark towards the hero's head. The further the story goes, the more there are and the faster they fly
  */
 const accents = {
     news: '#ff5a5a',
@@ -845,10 +845,10 @@ const flyingCards = []
 
 /**
  * Bursts
-  * The night isn't an even stream; it has two set pieces. At 22:00, a cold open: the lamp of the colleague across the desk goes out
-  * and a volley of three notifications arrives, so the player is busy from the first seconds and gets what the game is about.
-  * At 02:00, a wave of layoffs: two lamps go out at once and a second volley arrives, so the middle of the night doesn't sag.
-  * After each volley there is a short pause, then the regular stream
+ * The night isn't an even stream; it has two set pieces. At 22:00, a cold open: the lamp of the colleague across the desk goes out
+ * and a volley of three notifications arrives, so the player is busy from the first seconds and gets what the game is about.
+ * At 02:00, a wave of layoffs: two lamps go out at once and a second volley arrives, so the middle of the night doesn't sag.
+ * After each volley there is a short pause, then the regular stream
  */
 const BURSTS = [
     {
@@ -947,10 +947,10 @@ const DISMISS_DURATION = 0.25
 
 /**
  * Noise
-  * From Middle on, some notifications are noise: mailing lists, LinkedIn, #random. They are grey and semi-transparent,
-  * so they can be told apart from important ones at a glance, without reading the text.
-  * Noise is harmless: if it lands, nothing happens; if you click it, you just wasted time. No new rules:
-  * players notice on their own that grey ones can be ignored and learn to choose where to spend their clicks
+ * From Middle on, some notifications are noise: mailing lists, LinkedIn, #random. They are grey and semi-transparent,
+ * so they can be told apart from important ones at a glance, without reading the text.
+ * Noise is harmless: if it lands, nothing happens; if you click it, you just wasted time. No new rules:
+ * players notice on their own that grey ones can be ignored and learn to choose where to spend their clicks
  */
 const NOISE_ACCENT = '#6b7280'
 const NOISE_OPACITY = 0.7
@@ -1109,7 +1109,7 @@ const updateNews = (elapsedTime) => {
 
 /**
  * Job applications
-  * The counter on the second monitor: more and more applications, and the only replies are rejections
+ * The counter on the second monitor: more and more applications, and the only replies are rejections
  */
 const rejections = [
     "We'll get back to you",
@@ -1242,9 +1242,9 @@ applyCameraDistance()
 
 /**
  * Camera modes
-  * During the shift the camera is nearly fixed: the office can be turned a little, but not sideways,
-  * zoomed or panned; otherwise a stray swipe that misses a card ruins the whole frame.
-  * The camera is free in Look around mode (no game) and on the final screen
+ * During the shift the camera is nearly fixed: the office can be turned a little, but not sideways,
+ * zoomed or panned; otherwise a stray swipe that misses a card ruins the whole frame.
+ * The camera is free in Look around mode (no game) and on the final screen
  */
 const gameplayView = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target))
 const GAMEPLAY_ROTATE_RANGE = THREE.MathUtils.degToRad(15) // how far the office can be turned left and right
@@ -1314,7 +1314,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping
 
 /**
  * Pointer interaction
-  * The Raycaster casts a ray from the camera through the point under the cursor and finds what it hits
+ * The Raycaster casts a ray from the camera through the point under the cursor and finds what it hits
  */
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
@@ -1324,8 +1324,8 @@ const cardScreenPosition = new THREE.Vector3()
 const CARD_HIT_PADDING = 18
 
 /**
-  * Find the card under the cursor in screen pixels rather than with a ray:
-  * that lets us add padding around the card and makes it much easier to hit
+ * Find the card under the cursor in screen pixels rather than with a ray:
+ * that lets us add padding around the card and makes it much easier to hit
  */
 const getCardUnderPointer = (event) => {
     const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
@@ -1460,7 +1460,7 @@ newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight 
 
 /**
  * Experience
-  * Story phases: intro (start screen) → running → ending (laptop closed, dawn) → done
+ * Story phases: intro (start screen) → running → ending (laptop closed, dawn) → done
  */
 const experience = {
     phase: 'intro',
@@ -1556,8 +1556,8 @@ const startShift = () => {
 
 /**
  * Look around
-  * No-game mode: the office is static, nobody gets fired, the camera is free to rotate, zoom and pan.
-  * Exit with Esc or the button; the page simply reloads back to the start screen
+ * No-game mode: the office is static, nobody gets fired, the camera is free to rotate, zoom and pan.
+ * Exit with Esc or the button; the page simply reloads back to the start screen
  */
 // Keeps panning from drifting into the void beyond the office walls
 const EXPLORE_BOUNDS = new THREE.Box3(new THREE.Vector3(-9, 0.3, -7), new THREE.Vector3(9, 3, 7))
@@ -1589,10 +1589,10 @@ window.addEventListener('keydown', (event) => {
 })
 
 /**
-  * Look around: the office lives on its own
-  * The same events as during a shift, just rarer and without consequences: now and then a lamp goes out and a ghost rises,
-  * notifications drift slowly towards the hero (no need to click, they melt at his head), rejections pile up on the second monitor.
-  * When the office is almost empty, someone flips the breaker and it all starts over
+ * Look around: the office lives on its own
+ * The same events as during a shift, just rarer and without consequences: now and then a lamp goes out and a ghost rises,
+ * notifications drift slowly towards the hero (no need to click, they melt at his head), rejections pile up on the second monitor.
+ * When the office is almost empty, someone flips the breaker and it all starts over
  */
 const AMBIENT_FIRE_EVERY = [5, 9] // seconds between firings
 const AMBIENT_CARD_EVERY = [3, 5] // between notifications
@@ -1646,8 +1646,8 @@ const beginShift = () => {
 
 /**
  * Clock in
-  * The shift starts with a hold, the same mechanic as working at the monitor, so the player learns it before starting.
-  * Let go too early and the bar slides back
+ * The shift starts with a hold, the same mechanic as working at the monitor, so the player learns it before starting.
+ * Let go too early and the bar slides back
  */
 const HOLD_DURATION = 0.9
 const clockIn = { holding: false, progress: 0 }
@@ -1688,8 +1688,8 @@ for (const button of ui.starts) {
 }
 
 /**
-  * Handbook is a native <dialog>: the browser handles focus, Esc and the top layer.
-  * It also closes on a backdrop click (the click lands on the dialog itself, not on .handbook-sheet)
+ * Handbook is a native <dialog>: the browser handles focus, Esc and the top layer.
+ * It also closes on a backdrop click (the click lands on the dialog itself, not on .handbook-sheet)
  */
 const closeHandbook = () => {
     if (!ui.handbook.open) return
@@ -1739,9 +1739,9 @@ window.addEventListener('pointerdown', () => {
 
 /**
  * Intro lights
-  * While the start screen is up, colleagues' lamps go out one by one: the subtitle comes true before the player's eyes.
-  * When nearly all are out, someone flips the breaker and it starts over.
-  * Only brightness changes (setDeskPower), not state: the shift starts with a fully lit office
+ * While the start screen is up, colleagues' lamps go out one by one: the subtitle comes true before the player's eyes.
+ * When nearly all are out, someone flips the breaker and it starts over.
+ * Only brightness changes (setDeskPower), not state: the shift starts with a fully lit office
  */
 const introLights = { nextAt: 2.5, flickering: null, flickerStart: 0, dark: new Set(), relightAt: 0, minute: -1 }
 const introClock = document.querySelector('[data-intro-clock]')
@@ -1798,8 +1798,8 @@ const updateIntroLights = (elapsedTime) => {
 }
 /**
  * Sound toggle
-  * The choice is saved in localStorage so the sound stays off after a reload.
-  * localStorage may be unavailable (e.g. in private mode), hence the try/catch
+ * The choice is saved in localStorage so the sound stays off after a reload.
+ * localStorage may be unavailable (e.g. in private mode), hence the try/catch
  */
 const MUTE_STORAGE_KEY = 'nightmare-office:muted'
 const muteLabel = document.querySelector('[data-mute-label]')
@@ -1840,8 +1840,8 @@ window.addEventListener('keydown', (event) => {
 
 /**
  * Shift clock
-  * The shift runs from 22:00 to 06:00. Its length in seconds is chosen so that
-  * every colleague has been fired by 06:00
+ * The shift runs from 22:00 to 06:00. Its length in seconds is chosen so that
+ * every colleague has been fired by 06:00
  */
 const shift = {
     start: 0,
@@ -1863,11 +1863,11 @@ const getShiftFraction = (elapsedTime) =>
     THREE.MathUtils.clamp((elapsedTime - shift.start) / shift.duration, 0, 1)
 
 /**
-  * Difficulty within the night: 0 at 22:00 → 1 at 06:00. It drives the Performance decay and the rate and speed of cards.
-  * It used to follow the number of fired colleagues, but firings speed up towards morning, so in the last 20% of the night
-  * difficulty jumped from 0.68 to 1: an even night and then a wall. Now it grows with time, almost linearly.
-  * A curve of 1 means steady growth with no wall at dawn. The volleys (Bursts) fill the quiet start and middle. Fog, lamp flicker and sound
-  * still follow the firings (getStoryProgress): that's atmosphere, not difficulty
+ * Difficulty within the night: 0 at 22:00 → 1 at 06:00. It drives the Performance decay and the rate and speed of cards.
+ * It used to follow the number of fired colleagues, but firings speed up towards morning, so in the last 20% of the night
+ * difficulty jumped from 0.68 to 1: an even night and then a wall. Now it grows with time, almost linearly.
+ * A curve of 1 means steady growth with no wall at dawn. The volleys (Bursts) fill the quiet start and middle. Fog, lamp flicker and sound
+ * still follow the firings (getStoryProgress): that's atmosphere, not difficulty
  */
 const DIFFICULTY_CURVE = 1
 
@@ -1902,7 +1902,7 @@ ui.goHome.addEventListener('click', () => startEnding('calm'))
 
 /**
  * Tension
-  * The more people are fired, the thicker the fog, the more the hero's lamp flickers and the harder the camera shakes
+ * The more people are fired, the thicker the fog, the more the hero's lamp flickers and the harder the camera shakes
  */
 const cameraShake = new THREE.Vector3()
 
@@ -1939,9 +1939,9 @@ const updateTension = (elapsedTime) => {
 
 /**
  * Game
-  * Two meters pull in opposite directions:
-  * Performance grows while you hold the monitor and constantly drains on its own (faster towards the end of the shift)
-  * Stress grows when a notification reaches the head and drops when you dismiss one
+ * Two meters pull in opposite directions:
+ * Performance grows while you hold the monitor and constantly drains on its own (faster towards the end of the shift)
+ * Stress grows when a notification reaches the head and drops when you dismiss one
  */
 const DANGER_LEVEL = 25 // below this mark (above it for Stress) the meter turns red
 
@@ -2015,8 +2015,8 @@ const addDismissScore = (position) => {
 
 /**
  * Hold hint
-  * A pulsing label above the hero's monitor that shows the monitor can be held.
-  * Visible until the player has worked at least once, and again whenever Performance sags
+ * A pulsing label above the hero's monitor that shows the monitor can be held.
+ * Visible until the player has worked at least once, and again whenever Performance sags
  */
 // A glowing hint sprite. The texture is created right away and again once IBM Plex Mono has loaded;
 // otherwise on a first visit the label would keep the fallback font and a wrong width
@@ -2189,9 +2189,9 @@ const updateGame = (elapsedTime, deltaTime) => {
 
 /**
  * Tutorial
-  * On first launch the game teaches two actions in place: hold the monitor, then dismiss one slow notification.
-  * During the tutorial the clock stands still, nobody gets fired and stress doesn't rise.
-  * To replay the tutorial, open the page with #tutorial in the URL
+ * On first launch the game teaches two actions in place: hold the monitor, then dismiss one slow notification.
+ * During the tutorial the clock stands still, nobody gets fired and stress doesn't rise.
+ * To replay the tutorial, open the page with #tutorial in the URL
  */
 const TUTORIAL_STORAGE_KEY = 'nightmare-office:tutorial-done'
 const TUTORIAL_START_PERFORMANCE = 55 // a partly empty meter, so the player sees work filling it
@@ -2322,9 +2322,9 @@ const placeCoach = (anchor) => {
 
 /**
  * Callouts
-  * The same bubble as in the tutorial, but one-off: the first time something new shows up during a night
-  * (currently grey noise), an explanation pops up above it for a few seconds. It doesn't introduce a new rule,
-  * it just answers "wait, what's this?"
+ * The same bubble as in the tutorial, but one-off: the first time something new shows up during a night
+ * (currently grey noise), an explanation pops up above it for a few seconds. It doesn't introduce a new rule,
+ * it just answers "wait, what's this?"
  */
 const CALLOUT_DURATION = 4
 const CALLOUT_CARD_PROGRESS = 0.35 // show once the card has covered a third of its path and is visible
@@ -2356,9 +2356,9 @@ const updateCallout = (elapsedTime) => {
 }
 
 /**
-  * Frozen or Very responsive
-  * Both endings mean Performance hit zero. But if the player kept dismissing notifications the whole time,
-  * he got fired for being "responsive". If he just sat and watched, he froze
+ * Frozen or Very responsive
+ * Both endings mean Performance hit zero. But if the player kept dismissing notifications the whole time,
+ * he got fired for being "responsive". If he just sat and watched, he froze
  */
 const FROZEN_AFTER = 8 // this many seconds without a single action and the hero has "frozen"
 const RESPONSIVE_MIN_DISMISSED = 5
@@ -2390,7 +2390,7 @@ const updateLampHold = (deltaTime) => {
 
 /**
  * Lamp hint
-  * A dim label by the hero's lamp: a quiet hint that you can just leave
+ * A dim label by the hero's lamp: a quiet hint that you can just leave
  */
 // The hint is honest about what happens (the night ends), but doesn't forbid it: this is the secret ending
 // fog: false (inside createHintSprite), otherwise the fog eats almost the whole label
@@ -2408,17 +2408,17 @@ const updateLampHint = (elapsedTime) => {
 
 /**
  * Endings
-  * The finale has two beats:
-  *   story   — the hero's last notification, flying into the scene like an in-game card (an in-world joke)
-  *   summary — the results in terminal style, like the intro: what happened (title), why (cause), a remark (line),
-  *             a tip for the next night (tip) and the shift log
-  * The summary speaks to the player as "you", like the intro and the handbook. This night's numbers come from stats
+ * The finale has two beats:
+ *   story   — the hero's last notification, flying into the scene like an in-game card (an in-world joke)
+ *   summary — the results in terminal style, like the intro: what happened (title), why (cause), a remark (line),
+ *             a tip for the next night (tip) and the shift log
+ * The summary speaks to the player as "you", like the intro and the handbook. This night's numbers come from stats
  *
-  * calm      — made it to 06:00 and went home: the ghosts leave at dawn, the first interview invite shows on the second monitor
-  * fired     — Performance = 0, but he dismissed notifications all night: fired for being "responsive"
-  * frozen    — Performance = 0 and he just sat there: time stops, cards hang in the air
-  * burnout   — Stress = 100: a flash and ringing ears, then a dark, empty office
-  * loggedOff — secret: he switched off his own lamp and left while the ghosts watched him go
+ * calm      — made it to 06:00 and went home: the ghosts leave at dawn, the first interview invite shows on the second monitor
+ * fired     — Performance = 0, but he dismissed notifications all night: fired for being "responsive"
+ * frozen    — Performance = 0 and he just sat there: time stops, cards hang in the air
+ * burnout   — Stress = 100: a flash and ringing ears, then a dark, empty office
+ * loggedOff — secret: he switched off his own lamp and left while the ghosts watched him go
  */
 const endings = {
     calm: {
@@ -2774,8 +2774,8 @@ const showOutro = (kind) => {
 }
 
 /**
-  * Restart: "hold to clock in again", the same hold as in the intro.
-  * Its own small requestAnimationFrame loop: by this point the game tick isn't waiting for anything
+ * Restart: "hold to clock in again", the same hold as in the intro.
+ * Its own small requestAnimationFrame loop: by this point the game tick isn't waiting for anything
  */
 const restartHold = { holding: false, progress: 0, last: 0, frame: 0 }
 
@@ -2948,14 +2948,14 @@ const updateEnding = (elapsedTime) => {
 
 /**
  * Levels
-  * The rules are the same on every level: hold the monitor, dismiss notifications.
-  * Levels only change the pace: how fast Performance drains, how often and how fast cards fly,
-  * how much a missed one costs, and how much harmless, distracting noise is mixed in.
+ * The rules are the same on every level: hold the monitor, dismiss notifications.
+ * Levels only change the pace: how fast Performance drains, how often and how fast cards fly,
+ * how much a missed one costs, and how much harmless, distracting noise is mixed in.
  *
-  * Levels form an even ladder: only the easiest (Junior, the game's original numbers) and the hardest (Lead) are defined,
-  * and every level takes values between them by its tier: 0, 1/3, 2/3, 1.
-  * So the difficulty step between neighbouring levels is always the same, and only two sets of numbers need tuning.
-  * Tune them in #debug → Game / News, then copy the numbers here
+ * Levels form an even ladder: only the easiest (Junior, the game's original numbers) and the hardest (Lead) are defined,
+ * and every level takes values between them by its tier: 0, 1/3, 2/3, 1.
+ * So the difficulty step between neighbouring levels is always the same, and only two sets of numbers need tuning.
+ * Tune them in #debug → Game / News, then copy the numbers here
  */
 const LEVEL_EASIEST = {
     game: {
