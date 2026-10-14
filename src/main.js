@@ -4,6 +4,7 @@ import GUI from 'lil-gui'
 import { createCardTexture, createGlowLabelTexture, createScreenTexture, monoFontReady } from './canvasText.js'
 import { createSound } from './sound.js'
 import { BURSTS, CODE_FILES, endings, firingReasons, newsFeed, noiseFeed, rejections } from './content.js'
+import { addToSet, readItem, readSet, STORAGE_KEYS, writeItem } from './storage.js'
 import { createClock, hashNoise, isCoarsePointer, pickRandom, prefersReducedMotion, randomBetween, smoothstep } from './utils.js'
 
 /**
@@ -1674,30 +1675,20 @@ const updateIntroLights = (elapsedTime) => {
 }
 /**
  * Sound toggle
- * The choice is saved in localStorage so the sound stays off after a reload.
- * localStorage may be unavailable (e.g. in private mode), hence the try/catch
+ * The choice is saved in localStorage so the sound stays off after a reload
  */
-const MUTE_STORAGE_KEY = 'nightmare-office:muted'
 const muteLabel = document.querySelector('[data-mute-label]')
 
 const setMuted = (muted) => {
     sound.setMuted(muted)
     ui.mute.classList.toggle('is-muted', muted)
     muteLabel.textContent = muted ? 'Sound off' : 'Sound on'
-    try {
-        localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0')
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
+    writeItem(STORAGE_KEYS.muted, muted ? '1' : '0')
 }
 
 const toggleMute = () => setMuted(!sound.isMuted())
 
-try {
-    setMuted(localStorage.getItem(MUTE_STORAGE_KEY) === '1')
-} catch {
-    setMuted(false)
-}
+setMuted(readItem(STORAGE_KEYS.muted) === '1')
 
 ui.mute.addEventListener('click', toggleMute)
 
@@ -2069,7 +2060,6 @@ const updateGame = (elapsedTime, deltaTime) => {
  * During the tutorial the clock stands still, nobody gets fired and stress doesn't rise.
  * To replay the tutorial, open the page with #tutorial in the URL
  */
-const TUTORIAL_STORAGE_KEY = 'nightmare-office:tutorial-done'
 const TUTORIAL_START_PERFORMANCE = 55 // a partly empty meter, so the player sees work filling it
 const TUTORIAL_CARD_DURATION = 10 // the tutorial card flies slowly; regular ones take about 9 s at the start
 const TUTORIAL_DONE_DURATION = 2.5 // how long "Nice!" stays up after the tutorial
@@ -2086,11 +2076,7 @@ const isTutorial = () => tutorial.step === 'work' || tutorial.step === 'dismiss'
 
 const shouldShowTutorial = () => {
     if (window.location.hash === '#tutorial') return true
-    try {
-        return localStorage.getItem(TUTORIAL_STORAGE_KEY) !== '1'
-    } catch {
-        return true
-    }
+    return readItem(STORAGE_KEYS.tutorialDone) !== '1'
 }
 
 const setCoach = (html, hasRing = true) => {
@@ -2124,11 +2110,8 @@ const spawnTutorialCard = (elapsedTime) => {
 }
 
 const finishTutorial = () => {
-    try {
-        localStorage.setItem(TUTORIAL_STORAGE_KEY, '1')
-    } catch {
-        // without localStorage the tutorial just shows again next time
-    }
+    // without localStorage the tutorial just shows again next time
+    writeItem(STORAGE_KEYS.tutorialDone, '1')
     ui.performance.classList.remove('is-coached')
     ui.coachSkip.hidden = true
     beginShift()
@@ -2282,44 +2265,22 @@ const updateLampHint = (elapsedTime) => {
     lampHint.position.y = lampHintBase.y + Math.sin(elapsedTime * 0.8) * 0.04
 }
 
-const ENDINGS_STORAGE_KEY = 'nightmare-office:endings'
-const BEST_SCORE_STORAGE_KEY = 'nightmare-office:best'
-
 // Each level keeps its own best score: Junior and Lead scores aren't comparable.
 // Junior uses the old key so best scores from before levels existed aren't lost
 const getBestScoreKey = () =>
-    currentLevelKey === 'junior' ? BEST_SCORE_STORAGE_KEY : `${BEST_SCORE_STORAGE_KEY}:${currentLevelKey}`
+    currentLevelKey === 'junior' ? STORAGE_KEYS.bestScore : `${STORAGE_KEYS.bestScore}:${currentLevelKey}`
 
-const getBestScore = () => {
-    try {
-        return Number(localStorage.getItem(getBestScoreKey())) || 0
-    } catch {
-        return 0
-    }
-}
+const getBestScore = () => Number(readItem(getBestScoreKey())) || 0
 
 // Saves the best score and reports whether it was beaten
 const saveBestScore = (score) => {
     const previousBest = getBestScore()
-    try {
-        if (score > previousBest) localStorage.setItem(getBestScoreKey(), String(score))
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
+    if (score > previousBest) writeItem(getBestScoreKey(), String(score))
     return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
 }
 
 // Endings the player has already seen, stored in localStorage to show "2/5"
-const saveEnding = (kind) => {
-    try {
-        const found = new Set(JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]'))
-        found.add(kind)
-        localStorage.setItem(ENDINGS_STORAGE_KEY, JSON.stringify([...found]))
-        return found
-    } catch {
-        return new Set([kind])
-    }
-}
+const saveEnding = (kind) => addToSet(STORAGE_KEYS.endings, kind)
 
 const dawn = {
     background: new THREE.Color('#4a3640'),
@@ -2350,13 +2311,7 @@ const startEnding = (kind) => {
     cameraReturn.active = false
     unlockCamera()
     experience.endingStart = elapsedTime
-    experience.endingIsNew = (() => {
-        try {
-            return !JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]').includes(kind)
-        } catch {
-            return false
-        }
-    })()
+    experience.endingIsNew = !readSet(STORAGE_KEYS.endings).has(kind)
     experience.endingsFound = saveEnding(kind)
     experience.endingTime = shiftTime(elapsedTime)
     experience.endingStats = {
@@ -2775,38 +2730,14 @@ const LEVEL_ORDER = Object.keys(levels)
 // (loggedOff isn't a loss: the hero left on his own)
 const DEMOTE_FROM = ['senior', 'lead']
 const FAIL_ENDINGS = ['fired', 'burnout', 'frozen']
-const LEVEL_STORAGE_KEY = 'nightmare-office:level'
-const PASSED_STORAGE_KEY = 'nightmare-office:passed'
 
 let currentLevelKey = 'junior'
 let currentLevel = levels.junior
 
 // Levels already survived until morning get a checkmark on the start screen
-const getPassedLevels = () => {
-    try {
-        return new Set(JSON.parse(localStorage.getItem(PASSED_STORAGE_KEY) || '[]'))
-    } catch {
-        return new Set()
-    }
-}
-
-const markLevelPassed = (key) => {
-    try {
-        const passed = getPassedLevels()
-        passed.add(key)
-        localStorage.setItem(PASSED_STORAGE_KEY, JSON.stringify([...passed]))
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
-}
-
-const saveLevel = (key) => {
-    try {
-        localStorage.setItem(LEVEL_STORAGE_KEY, key)
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
-}
+const getPassedLevels = () => readSet(STORAGE_KEYS.passedLevels)
+const markLevelPassed = (key) => addToSet(STORAGE_KEYS.passedLevels, key)
+const saveLevel = (key) => writeItem(STORAGE_KEYS.level, key)
 
 const applyLevel = (key) => {
     // hasOwn rather than levels[key]: localStorage could hold something like 'toString'
@@ -2850,11 +2781,7 @@ ui.promote.addEventListener('click', () => {
     window.location.reload()
 })
 
-try {
-    applyLevel(localStorage.getItem(LEVEL_STORAGE_KEY))
-} catch {
-    applyLevel('junior')
-}
+applyLevel(readItem(STORAGE_KEYS.level))
 
 gui.addFolder('Level').add({ level: currentLevelKey }, 'level', LEVEL_ORDER).onChange((key) => {
     applyLevel(key)
