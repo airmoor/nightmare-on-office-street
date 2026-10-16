@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 
 /**
-  * Helpers that draw text on a <canvas> and turn it into a texture.
-  * Simpler and lighter than 3D text: the text is just an image on a plane or a sprite
+ * Helpers that draw text on a <canvas> and turn it into a texture.
+ * Simpler and lighter than 3D text: the text is just an image on a plane or a sprite
  */
 
 // Notifications come from other people's apps, so they use a "system" font.
@@ -45,8 +45,8 @@ const toTexture = (canvas) => {
 }
 
 /**
-  * Notification card: dark background, colored label on top, then the text
-  * Returns the texture and its aspect ratio so the sprite can be scaled correctly
+ * Notification card: dark background, colored label on top, then the text
+ * Returns the texture and its aspect ratio so the sprite can be scaled correctly
  */
 export const createCardTexture = ({ label, text, accent = '#ff5a5a', width = 512 }) => {
     const padding = 28
@@ -89,7 +89,7 @@ export const createCardTexture = ({ label, text, accent = '#ff5a5a', width = 512
 }
 
 /**
-  * Glowing label without a background, e.g. "LOW PERFORMANCE" above a desk
+ * Glowing label without a background, e.g. "LOW PERFORMANCE" above a desk
  */
 export const createGlowLabelTexture = (text, color = '#ff4d4d') => {
     const fontSize = 64
@@ -114,8 +114,8 @@ export const createGlowLabelTexture = (text, color = '#ff4d4d') => {
 }
 
 /**
-  * A screen that is redrawn whenever its data changes
-  * draw(context, width, height, font) is your drawing function
+ * A screen that is redrawn whenever its data changes
+ * draw(context, width, height, font) is your drawing function
  */
 export const createScreenTexture = ({ width = 512, height = 288 }) => {
     const canvas = document.createElement('canvas')

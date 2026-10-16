@@ -1,18 +1,20 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import GUI from 'lil-gui'
-import { createCardTexture, createGlowLabelTexture, createScreenTexture, monoFontReady } from './canvasText.js'
+import { createCardTexture, createGlowLabelTexture, monoFontReady } from './canvasText.js'
 import { createSound } from './sound.js'
+import { BURSTS, endings, firingReasons, newsFeed, noiseFeed } from './content.js'
+import { DEMOTE_FROM, FAIL_ENDINGS, getLevelParams, LEVEL_ORDER, levels } from './levels.js'
+import { ghostRoot, ghostWatch, removeGhosts, setGhostVisibility, spawnGhost, updateGhosts } from './ghosts.js'
+import { applications, drawJobScreen, sendApplications, updateCodeScreen } from './screens.js'
+import { colleagues, colors, heroDesk, heroHead, jobMonitorScreen, lampHitbox, officeRoot, setDeskPower, workHitbox } from './office.js'
+import { addToSet, readItem, readSet, STORAGE_KEYS, writeItem } from './storage.js'
+import { actionWord, ui } from './ui.js'
+import { createClock, hashNoise, isCoarsePointer, pickRandom, prefersReducedMotion, randomBetween, smoothstep } from './utils.js'
 
 /**
  * Base
  */
-// The panel only shows with #debug in the URL, e.g. localhost:5173/#debug
-const gui = new GUI({ title: 'Debug' })
-const updateDebugVisibility = () => gui.show(window.location.hash === '#debug')
-updateDebugVisibility()
-window.addEventListener('hashchange', updateDebugVisibility)
-const canvas = document.querySelector('canvas.webgl')
+const { canvas } = ui
 // Long press is the core mechanic, so the browser's "Save image…" menu must not open on it
 canvas.addEventListener('contextmenu', (event) => event.preventDefault())
 const scene = new THREE.Scene()
@@ -27,499 +29,12 @@ const params = {
 }
 
 const sound = createSound()
-const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-
-// Our own clock instead of THREE.Clock: it only accumulates a clamped frame step.
-// While the tab is hidden there are no frames, so game time stands still instead of racing ahead
-const MAX_FRAME_STEP = 0.1
-const clock = (() => {
-    let elapsed = 0
-    let last = performance.now()
-    return {
-        update() {
-            const now = performance.now()
-            elapsed += Math.min((now - last) / 1000, MAX_FRAME_STEP)
-            last = now
-        },
-        getElapsedTime: () => elapsed,
-    }
-})()
-
-// Small shared helpers
-const pickRandom = (array) => array[Math.floor(Math.random() * array.length)]
-const randomBetween = ([min, max]) => min + Math.random() * (max - min)
-// Deterministic pseudo-noise in 0..1: the same n always gives the same value (lamp flicker)
-const hashNoise = (n) => Math.abs(Math.sin(n * 12.9898) * 43758.5453) % 1
+const clock = createClock()
 
 scene.background = new THREE.Color(params.background)
 scene.fog = new THREE.FogExp2(params.background, params.fogDensity)
+scene.add(officeRoot, ghostRoot)
 
-/**
- * Textures
- */
-// A soft light pool drawn on a canvas: white center -> transparent edge.
-// It's a "fake" light: it looks like a lamp but costs the GPU almost nothing
-const createLightPoolTexture = () => {
-    const size = 256
-    const poolCanvas = document.createElement('canvas')
-    poolCanvas.width = size
-    poolCanvas.height = size
-    const context = poolCanvas.getContext('2d')
-    const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2)
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)')
-    gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.35)')
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
-    context.fillStyle = gradient
-    context.fillRect(0, 0, size, size)
-    const texture = new THREE.CanvasTexture(poolCanvas)
-    texture.colorSpace = THREE.SRGBColorSpace
-    return texture
-}
-const lightPoolTexture = createLightPoolTexture()
-
-/**
- * Shared geometries & materials
-  * One geometry shared by all desks instead of one per desk: faster
- */
-const geometries = {
-    deskTop: new THREE.BoxGeometry(1.6, 0.06, 0.8),
-    deskLeg: new THREE.BoxGeometry(0.05, 0.75, 0.05),
-    monitor: new THREE.BoxGeometry(0.7, 0.42, 0.04),
-    screen: new THREE.PlaneGeometry(0.64, 0.36),
-    monitorStand: new THREE.BoxGeometry(0.05, 0.2, 0.05),
-    chairSeat: new THREE.BoxGeometry(0.5, 0.06, 0.5),
-    chairBack: new THREE.BoxGeometry(0.5, 0.55, 0.06),
-    chairLeg: new THREE.CylinderGeometry(0.03, 0.03, 0.45, 8),
-    torso: new THREE.CapsuleGeometry(0.2, 0.35, 4, 12),
-    head: new THREE.SphereGeometry(0.16, 16, 16),
-    thigh: new THREE.BoxGeometry(0.36, 0.14, 0.42),
-    cord: new THREE.CylinderGeometry(0.01, 0.01, 2, 4),
-    shade: new THREE.ConeGeometry(0.28, 0.22, 20, 1, true),
-    bulb: new THREE.SphereGeometry(0.07, 12, 12),
-    lightPool: new THREE.PlaneGeometry(3.2, 3.2),
-}
-
-const materials = {
-    desk: new THREE.MeshStandardMaterial({ color: '#3a3f4a', roughness: 0.7 }),
-    metal: new THREE.MeshStandardMaterial({ color: '#22252c', roughness: 0.4, metalness: 0.6 }),
-    chair: new THREE.MeshStandardMaterial({ color: '#1b1d22', roughness: 0.8 }),
-    shade: new THREE.MeshStandardMaterial({ color: '#2a2d33', roughness: 0.5, side: THREE.DoubleSide }),
-    skin: new THREE.MeshStandardMaterial({ color: '#c9a58c', roughness: 0.8 }),
-    pants: new THREE.MeshStandardMaterial({ color: '#2b2f3a', roughness: 0.9 }),
-}
-
-const colors = {
-    bulbOn: new THREE.Color('#ffd9a0'),
-    bulbOff: new THREE.Color('#1a1a1a'),
-    screenOn: new THREE.Color('#5d8bd6'),
-    screenOff: new THREE.Color('#050608'),
-    screenWork: new THREE.Color('#9be7c4'), // the hero's screen while he works
-}
-
-/**
- * Floor
- */
-const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 60),
-    new THREE.MeshStandardMaterial({ color: '#15171c', roughness: 0.9 })
-)
-floor.rotation.x = -Math.PI * 0.5
-floor.receiveShadow = true
-scene.add(floor)
-
-/**
- * Builders
- */
-const createPerson = (shirtColor) => {
-    const person = new THREE.Group()
-    const shirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.9 })
-
-    const torso = new THREE.Mesh(geometries.torso, shirt)
-    torso.position.y = 0.98
-    torso.rotation.x = -0.12 // slightly hunched towards the monitor
-    person.add(torso)
-
-    const head = new THREE.Mesh(geometries.head, materials.skin)
-    head.position.set(0, 1.5, -0.08)
-    person.add(head)
-
-    const thighs = new THREE.Mesh(geometries.thigh, materials.pants)
-    thighs.position.set(0, 0.55, -0.15)
-    person.add(thighs)
-
-    // Needed for the Logged off ending, when the hero stands up and walks away
-    person.userData = { torso, thighs }
-
-    return person
-}
-
-const createChair = () => {
-    const chair = new THREE.Group()
-
-    const seat = new THREE.Mesh(geometries.chairSeat, materials.chair)
-    seat.position.y = 0.47
-    chair.add(seat)
-
-    const back = new THREE.Mesh(geometries.chairBack, materials.chair)
-    back.position.set(0, 0.78, 0.25)
-    chair.add(back)
-
-    const leg = new THREE.Mesh(geometries.chairLeg, materials.metal)
-    leg.position.y = 0.22
-    chair.add(leg)
-
-    return chair
-}
-
-const createDesk = ({ shirtColor }) => {
-    const desk = new THREE.Group()
-
-    // Desktop and legs
-    const top = new THREE.Mesh(geometries.deskTop, materials.desk)
-    top.position.y = 0.75
-    desk.add(top)
-
-    for (const [x, z] of [[-0.75, -0.35], [0.75, -0.35], [-0.75, 0.35], [0.75, 0.35]]) {
-        const leg = new THREE.Mesh(geometries.deskLeg, materials.metal)
-        leg.position.set(x, 0.375, z)
-        desk.add(leg)
-    }
-
-    // Monitor: housing + glowing screen (MeshBasicMaterial ignores lighting)
-    const stand = new THREE.Mesh(geometries.monitorStand, materials.metal)
-    stand.position.set(0, 0.88, -0.22)
-    desk.add(stand)
-
-    const monitor = new THREE.Mesh(geometries.monitor, materials.metal)
-    monitor.position.set(0, 1.15, -0.22)
-    desk.add(monitor)
-
-    const screen = new THREE.Mesh(
-        geometries.screen,
-        new THREE.MeshBasicMaterial({ color: colors.screenOn.clone() })
-    )
-    screen.position.set(0, 1.15, -0.199)
-    desk.add(screen)
-
-    // Chair and person sit in front of the desk (+z), facing the monitor (-z)
-    const chair = createChair()
-    chair.position.z = 0.65
-    desk.add(chair)
-
-    const person = createPerson(shirtColor)
-    person.position.z = 0.65
-    desk.add(person)
-
-    // Pendant lamp
-    const cord = new THREE.Mesh(geometries.cord, materials.metal)
-    cord.position.y = 3.7
-    desk.add(cord)
-
-    const shade = new THREE.Mesh(geometries.shade, materials.shade)
-    shade.position.y = 2.7
-    desk.add(shade)
-
-    const bulb = new THREE.Mesh(
-        geometries.bulb,
-        new THREE.MeshBasicMaterial({ color: colors.bulbOn.clone() })
-    )
-    bulb.position.y = 2.6
-    desk.add(bulb)
-
-    // Light pool on the floor under the lamp
-    const lightPool = new THREE.Mesh(
-        geometries.lightPool,
-        new THREE.MeshBasicMaterial({
-            color: colors.bulbOn,
-            map: lightPoolTexture,
-            transparent: true,
-            opacity: 0.35,
-            depthWrite: false,
-            blending: THREE.AdditiveBlending,
-        })
-    )
-    lightPool.rotation.x = -Math.PI * 0.5
-    lightPool.position.set(0, 0.01, 0.2)
-    desk.add(lightPool)
-
-    desk.traverse((child) => {
-        if (child.isMesh && child !== lightPool) {
-            child.castShadow = true
-            child.receiveShadow = true
-        }
-    })
-
-    // Everything we'll need to change later goes into userData
-    desk.userData = {
-        state: 'on', // 'on' | 'flickering' | 'off'
-        flickerStart: 0,
-        bulb,
-        screen,
-        lightPool,
-        person,
-        basePoolOpacity: lightPool.material.opacity,
-    }
-
-    return desk
-}
-
-/**
- * Office layout
- */
-const office = {
-    rows: 4,
-    cols: 5,
-    spacingX: 3.2,
-    spacingZ: 3,
-    heroRow: 2,
-    heroCol: 2,
-}
-
-const colleagueShirts = ['#4b5563', '#6b7280', '#3f4d5c', '#5a5148', '#47524a', '#584b5a']
-
-const colleagues = []
-let heroDesk = null
-
-for (let row = 0; row < office.rows; row++) {
-    for (let col = 0; col < office.cols; col++) {
-        const isHero = row === office.heroRow && col === office.heroCol
-        const desk = createDesk({
-            // The hero wears an orange hoodie: a small Halloween nod
-            shirtColor: isHero ? '#d9772b' : colleagueShirts[(row * office.cols + col) % colleagueShirts.length],
-        })
-        desk.position.set(
-            (col - (office.cols - 1) / 2) * office.spacingX,
-            0,
-            (row - (office.rows - 1) / 2) * office.spacingZ
-        )
-        scene.add(desk)
-
-        if (isHero) heroDesk = desk
-        else colleagues.push(desk)
-    }
-}
-
-/**
- * Hero desk extras
- */
-// A pumpkin on the hero's desk
-const pumpkin = new THREE.Group()
-const pumpkinBody = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1, 16, 12),
-    new THREE.MeshStandardMaterial({ color: '#e0701e', roughness: 0.6, emissive: '#3a1400' })
-)
-pumpkinBody.scale.y = 0.8
-pumpkin.add(pumpkinBody)
-const pumpkinStem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.012, 0.018, 0.05, 6),
-    new THREE.MeshStandardMaterial({ color: '#3d4a1e' })
-)
-pumpkinStem.position.y = 0.09
-pumpkin.add(pumpkinStem)
-pumpkin.position.set(0.62, 0.86, 0.25)
-pumpkin.traverse((child) => { if (child.isMesh) child.castShadow = true })
-heroDesk.add(pumpkin)
-
-// Second monitor: the hero spends all day applying for jobs on it
-const jobScreen = createScreenTexture({ width: 512, height: 288 })
-
-const jobMonitor = new THREE.Group()
-const jobMonitorBody = new THREE.Mesh(geometries.monitor, materials.metal)
-jobMonitorBody.castShadow = true
-jobMonitor.add(jobMonitorBody)
-const jobMonitorScreen = new THREE.Mesh(
-    geometries.screen,
-    new THREE.MeshBasicMaterial({ map: jobScreen.texture })
-)
-jobMonitorScreen.position.z = 0.021
-jobMonitor.add(jobMonitorScreen)
-jobMonitor.scale.setScalar(0.8)
-jobMonitor.position.set(0.62, 1.1, -0.12)
-jobMonitor.rotation.y = -0.45
-heroDesk.add(jobMonitor)
-
-/**
- * Code screen
-  * The hero's main monitor shows an editor. While the player holds the monitor, text is typed character by character; let go and the cursor blinks.
-  * Three files on a loop tell the story of the night: an urgent ticket → a performance review self-assessment → a resume.
-  * Light theme: the screen is a light source in the dark office, and the material color (blue, green while working)
-  * still tints the whole image, so the monitor glows as before, it just has something on it now
- */
-const codeScreen = createScreenTexture({ width: 512, height: 288 })
-heroDesk.userData.screen.material.map = codeScreen.texture
-heroDesk.userData.screen.material.needsUpdate = true
-
-const CODE_FILES = [
-    {
-        name: 'payments/retry.ts',
-        ticket: 'JIRA-4821 · due yesterday',
-        status: 'main · 3 failing checks',
-        lines: [
-            '// TODO: make this AI-native (per CEO)',
-            'export async function retryPayment(id) {',
-            '  const tx = await db.tx.find(id)',
-            "  if (!tx) throw new Error('not found')",
-            '  for (let i = 0; i < 3; i++) {',
-            '    if (await gateway.charge(tx)) return',
-            '    await sleep(2 ** i * 1000)',
-            '  }',
-            '  // works on my machine. ship it',
-            "  return escalate(tx, 'on-call: me')",
-            '}',
-        ],
-    },
-    {
-        name: 'self-assessment.md',
-        ticket: 'HR · due 09:00',
-        status: 'draft · autosaved',
-        lines: [
-            '# Self-assessment, Q3',
-            '## Impact',
-            '- Kept payments up through 3 reorgs',
-            '- Mentored 2 juniors (both laid off)',
-            '- Adopted 4 AI tools, as requested',
-            '## Areas to improve',
-            '- Be more AI-native',
-            '- Be more visible',
-            '- Sleep is not a deliverable',
-        ],
-    },
-    {
-        name: 'resume_final_v7.md',
-        ticket: 'personal · close fast',
-        status: 'private · not synced',
-        lines: [
-            '# Senior Engineer, open to work',
-            '- 7 years shipping things nobody saw',
-            '- Survived 4 restructurings',
-            '- Fluent in TypeScript, Jira, fear',
-            '## Looking for',
-            '- A team that exists next month',
-            '- A manager who never says',
-            '  "quick sync?"',
-        ],
-    },
-]
-const CODE_TYPE_SPEED = 38 // characters per second while the player holds the monitor
-const CODE_IDLE_SPEED = 16 // on the start screen and in Look around the hero types on his own, unhurried
-const CODE_FILE_PAUSE = 2.5 // seconds a finished file stays on screen before the next one opens
-const code = { file: 0, typed: 0, doneAt: null, drawnChars: -1, drawnCursor: null }
-const getCodeLength = (file) => file.lines.reduce((total, line) => total + line.length + 1, 0)
-
-const drawCodeScreen = (showCursor) => {
-    const file = CODE_FILES[code.file]
-    codeScreen.redraw((context, width, height, font) => {
-        context.fillStyle = '#eef2f8'
-        context.fillRect(0, 0, width, height)
-        context.textBaseline = 'middle'
-
-        // Tab with the file name and a "burning" ticket
-        context.fillStyle = '#d5deec'
-        context.fillRect(0, 0, width, 34)
-        context.font = `500 15px ${font}`
-        context.fillStyle = '#1f2a3a'
-        context.textAlign = 'left'
-        context.fillText(file.name, 14, 17)
-        context.fillStyle = '#c0392b'
-        context.textAlign = 'right'
-        context.fillText(file.ticket, width - 14, 17)
-
-        // Typed lines. If they don't fit, show the last ones, as if the editor scrolled
-        const lineHeight = 23
-        const top = 44
-        const maxLines = Math.floor((height - top - 30) / lineHeight)
-        let left = Math.floor(code.typed)
-        const shown = []
-        for (const line of file.lines) {
-            if (left <= 0) break
-            shown.push(line.slice(0, left))
-            left -= line.length + 1
-        }
-        if (shown.length === 0) shown.push('')
-        const first = Math.max(0, shown.length - maxLines)
-
-        context.font = `18px ${font}`
-        shown.slice(first).forEach((text, index) => {
-            const y = top + index * lineHeight + lineHeight / 2
-            context.fillStyle = '#9aa6b8'
-            context.textAlign = 'right'
-            context.fillText(String(first + index + 1), 32, y)
-            context.textAlign = 'left'
-            const trimmed = text.trimStart()
-            context.fillStyle = trimmed.startsWith('//') || trimmed.startsWith('#') ? '#4f7a57' : '#1b2433'
-            context.fillText(text, 44, y)
-            if (showCursor && first + index === shown.length - 1) {
-                context.fillStyle = '#1b2433'
-                context.fillRect(44 + context.measureText(text).width + 1, y - 10, 10, 20)
-            }
-        })
-
-        // Status bar
-        context.fillStyle = '#d5deec'
-        context.fillRect(0, height - 26, width, 26)
-        context.font = `13px ${font}`
-        context.fillStyle = '#4a5568'
-        context.fillText(file.status, 14, height - 13)
-    })
-}
-drawCodeScreen(true)
-
-const updateCodeScreen = (elapsedTime, deltaTime) => {
-    const { phase } = experience
-    let typing = false
-    let speed = CODE_TYPE_SPEED
-
-    if (phase === 'running') {
-        typing = game.working
-    } else if (phase === 'intro' || phase === 'explore') {
-        // On his own the hero types in bursts: quick, then frozen, staring at the screen
-        typing = Math.sin(elapsedTime * 0.9) + Math.sin(elapsedTime * 2.3) * 0.5 > -0.3
-        speed = CODE_IDLE_SPEED
-        heroDesk.userData.person.position.y = typing ? Math.abs(Math.sin(elapsedTime * 25)) * 0.012 : 0
-    } else {
-        return // finale: the screen freezes on whatever was typed
-    }
-
-    const total = getCodeLength(CODE_FILES[code.file])
-    if (typing && code.typed < total) code.typed = Math.min(total, code.typed + speed * deltaTime)
-    if (code.typed >= total) {
-        if (code.doneAt === null) code.doneAt = elapsedTime
-        if (elapsedTime - code.doneAt > CODE_FILE_PAUSE) {
-            code.file = (code.file + 1) % CODE_FILES.length
-            code.typed = 0
-            code.doneAt = null
-        }
-    }
-
-    // Cursor is solid while typing, blinking otherwise. Redraw only when something changed
-    const showCursor = typing || Math.floor(elapsedTime * 2) % 2 === 0
-    const chars = Math.floor(code.typed) + code.file * 10000
-    if (chars !== code.drawnChars || showCursor !== code.drawnCursor) {
-        code.drawnChars = chars
-        code.drawnCursor = showCursor
-        drawCodeScreen(showCursor)
-    }
-}
-
-// The point every notification flies to: the hero's head
-const heroHead = heroDesk.position.clone().add(new THREE.Vector3(0, 1.5, 0.57))
-
-// An invisible box around the hero's monitor: much easier to hit with a finger than the screen itself.
-// visible: false on the material means the mesh isn't drawn, but the Raycaster still finds it
-const workHitbox = new THREE.Mesh(
-    new THREE.BoxGeometry(1, 0.8, 0.6),
-    new THREE.MeshBasicMaterial({ visible: false })
-)
-workHitbox.position.set(0, 1.1, -0.1)
-heroDesk.add(workHitbox)
-
-// A similar invisible sphere around the hero's lamp: it switches the light off and leaves (Logged off ending)
-const lampHitbox = new THREE.Mesh(
-    new THREE.SphereGeometry(0.4, 8, 8),
-    new THREE.MeshBasicMaterial({ visible: false })
-)
-lampHitbox.position.set(0, 2.65, 0)
-heroDesk.add(lampHitbox)
 const lampHold = { holding: false, progress: 0 } // 0 → 1 while the player holds the lamp
 
 /**
@@ -550,18 +65,9 @@ heroDesk.add(monitorGlow)
 
 /**
  * Firing colleagues
-  * The lamp flickers for ~1.2 seconds, then goes out and the person disappears
+ * The lamp flickers for ~1.2 seconds, then goes out and the person disappears
  */
 const FLICKER_DURATION = 1.2
-
-const firingReasons = [
-    'LOW PERFORMANCE',
-    'INSUFFICIENT AI ADOPTION',
-    'ROLE NO LONGER REQUIRED',
-    'RESTRUCTURING',
-    'NOT AI-NATIVE ENOUGH',
-    'REPLACED BY AGENT',
-]
 
 const fireColleague = (desk) => {
     if (desk.userData.state !== 'on') return
@@ -581,7 +87,7 @@ const fireRandomColleague = () => {
 
 /**
  * Firing labels
-  * The reason for the firing pops up above the desk: it appears, slowly rises and fades
+ * The reason for the firing pops up above the desk: it appears, slowly rises and fades
  */
 const LABEL_LIFETIME = 3.5
 const floatingLabels = []
@@ -623,14 +129,6 @@ const updateFiringLabels = (elapsedTime) => {
     }
 }
 
-// power: 1 is fully lit, 0 is darkness
-const setDeskPower = (desk, power) => {
-    const { bulb, screen, lightPool, basePoolOpacity } = desk.userData
-    bulb.material.color.lerpColors(colors.bulbOff, colors.bulbOn, power)
-    screen.material.color.lerpColors(colors.screenOff, colors.screenOn, power)
-    lightPool.material.opacity = basePoolOpacity * power
-}
-
 const resetOffice = () => {
     for (const desk of colleagues) {
         desk.userData.state = 'on'
@@ -660,145 +158,9 @@ const updateColleagues = (elapsedTime) => {
 }
 
 /**
- * Ghosts
-  * A fired colleague rises from the chair as a ghost carrying a box of belongings and wanders around the office
- */
-const createGhostGeometry = () => {
-    // LatheGeometry spins a profile around the Y axis, like a potter's wheel
-    const profile = [
-        new THREE.Vector2(0.3, 0),
-        new THREE.Vector2(0.29, 0.2),
-        new THREE.Vector2(0.27, 0.45),
-        new THREE.Vector2(0.24, 0.62),
-        new THREE.Vector2(0.18, 0.76),
-        new THREE.Vector2(0.1, 0.84),
-        new THREE.Vector2(0.001, 0.87),
-    ]
-    const geometry = new THREE.LatheGeometry(profile, 32)
-
-    // Wavy hem: move the bottom vertices up and down along a sine wave
-    const position = geometry.attributes.position
-    for (let i = 0; i < position.count; i++) {
-        if (position.getY(i) > 0.01) continue
-        const angle = Math.atan2(position.getZ(i), position.getX(i))
-        position.setY(i, Math.sin(angle * 7) * 0.05)
-    }
-    geometry.computeVertexNormals()
-
-    return geometry
-}
-
-const ghostGeometries = {
-    body: createGhostGeometry(),
-    eye: new THREE.SphereGeometry(0.035, 8, 8),
-    box: new THREE.BoxGeometry(0.34, 0.2, 0.24),
-}
-
-const ghostMaterials = {
-    body: new THREE.MeshStandardMaterial({
-        color: '#dfe8ff',
-        emissive: '#6c7fa8',
-        emissiveIntensity: 0.6,
-        transparent: true,
-        opacity: 0.55,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-    }),
-    eye: new THREE.MeshBasicMaterial({ color: '#0a0a0f' }),
-    box: new THREE.MeshStandardMaterial({ color: '#8a6a42', roughness: 0.9 }),
-}
-
-const GHOST_APPEAR_DURATION = 2
-const ghosts = []
-
-const createGhost = () => {
-    const ghost = new THREE.Group()
-
-    ghost.add(new THREE.Mesh(ghostGeometries.body, ghostMaterials.body))
-
-    // Eyes and box are at the front, i.e. +z: that's where the ghost "looks"
-    for (const x of [-0.07, 0.07]) {
-        const eye = new THREE.Mesh(ghostGeometries.eye, ghostMaterials.eye)
-        eye.position.set(x, 0.66, 0.2)
-        ghost.add(eye)
-    }
-
-    const box = new THREE.Mesh(ghostGeometries.box, ghostMaterials.box)
-    box.position.set(0, 0.32, 0.3)
-    ghost.add(box)
-
-    return ghost
-}
-
-const spawnGhost = (desk, elapsedTime) => {
-    const ghost = createGhost()
-    const direction = Math.random() < 0.5 ? -1 : 1
-
-    ghost.userData = {
-        start: elapsedTime,
-        origin: desk.position.clone().add(new THREE.Vector3(0, 0, 0.65)), // the chair
-        radius: 1.5 + Math.random() * 2,
-        speed: (0.15 + Math.random() * 0.2) * direction,
-        phase: Math.random() * Math.PI * 2,
-    }
-    ghost.scale.setScalar(0)
-    ghost.position.copy(ghost.userData.origin)
-    scene.add(ghost)
-    ghosts.push(ghost)
-}
-
-const removeGhosts = () => {
-    for (const ghost of ghosts) scene.remove(ghost)
-    ghosts.length = 0
-}
-
-// In the finale the ghosts dissolve: 1 → 0
-let ghostVisibility = 1
-
-// In the Logged off ending the ghosts stop and watch the hero leave
-const ghostWatch = {
-    pausedAt: null, // when the ghosts stopped moving
-    target: null, // what they're looking at (a point in the scene)
-}
-
-const ghostTarget = new THREE.Vector3()
-
-const updateGhosts = (elapsedTime) => {
-    for (const ghost of ghosts) {
-        const { start, origin, radius, speed, phase } = ghost.userData
-        const t = elapsedTime - start
-
-        // Appearing: grows and rises from the chair (easeOut: fast at first, smooth at the end)
-        const appear = Math.min(t / GHOST_APPEAR_DURATION, 1)
-        const eased = appear * (2 - appear)
-        ghost.scale.setScalar(eased * ghostVisibility)
-
-        // Then wanders in a circle. Subtract cos/sin(phase) so the circle starts exactly at the chair.
-        // Once the ghosts stop, wander time freezes at the moment they stopped
-        const walkedTime = ghostWatch.pausedAt === null ? t : Math.min(t, ghostWatch.pausedAt - start)
-        const wanderTime = Math.max(0, walkedTime - GHOST_APPEAR_DURATION)
-        const angle = phase + wanderTime * speed
-        ghost.position.x = origin.x + (Math.cos(angle) - Math.cos(phase)) * radius
-        ghost.position.z = origin.z + (Math.sin(angle) - Math.sin(phase)) * radius
-        ghost.position.y = THREE.MathUtils.lerp(0.3, 0.9, eased) + Math.sin(elapsedTime * 2 + phase) * 0.08
-
-        if (ghostWatch.target) {
-            // Slowly turn towards the hero. The ghost faces +z, hence atan2(dx, dz)
-            ghostTarget.copy(ghostWatch.target).sub(ghost.position)
-            const targetAngle = Math.atan2(ghostTarget.x, ghostTarget.z)
-            const turn = Math.atan2(Math.sin(targetAngle - ghost.rotation.y), Math.cos(targetAngle - ghost.rotation.y))
-            ghost.rotation.y += turn * 0.05
-        } else if (wanderTime > 0) {
-            // Face the direction of movement (tangent to the circle)
-            ghost.rotation.y = Math.atan2(-Math.sin(angle) * speed, Math.cos(angle) * speed)
-        }
-    }
-}
-
-/**
  * Story timeline
-  * Each firing comes sooner than the previous one:
-  * interval = firstInterval * acceleration ^ firedCount, but never less than minInterval
+ * Each firing comes sooner than the previous one:
+ * interval = firstInterval * acceleration ^ firedCount, but never less than minInterval
  */
 const story = {
     autoplay: true,
@@ -827,34 +189,8 @@ const updateStory = (elapsedTime) => {
 
 /**
  * News feed
-  * Cards fly out of the dark towards the hero's head. The further the story goes, the more there are and the faster they fly
+ * Cards fly out of the dark towards the hero's head. The further the story goes, the more there are and the faster they fly
  */
-const accents = {
-    news: '#ff5a5a',
-    slack: '#a78bfa',
-    email: '#f5a524',
-    calendar: '#38bdf8',
-    linkedin: '#60a5fa',
-    ai: '#34d399',
-}
-
-const newsFeed = [
-    { label: 'Breaking', text: 'New AI model writes code 40% faster than senior devs', accent: accents.news },
-    { label: 'Slack · Manager', text: 'Quick sync? 🙂', accent: accents.slack },
-    { label: 'Email · HR', text: 'Mandatory AI adoption training — due today', accent: accents.email },
-    { label: 'Breaking', text: 'Tech layoffs hit a new record this quarter', accent: accents.news },
-    { label: 'Calendar', text: 'Performance review — tomorrow, 9:00', accent: accents.calendar },
-    { label: 'LinkedIn', text: 'Your former teammate is now #OpenToWork', accent: accents.linkedin },
-    { label: 'Slack · #general', text: 'Please welcome our new AI teammate 🤖', accent: accents.slack },
-    { label: 'Changelog', text: 'Model v7 is out. v6 is deprecated (released 3 weeks ago)', accent: accents.ai },
-    { label: 'Breaking', text: 'Markets fall amid recession fears', accent: accents.news },
-    { label: 'Email · CEO', text: 'We are becoming an AI-first company', accent: accents.email },
-    { label: 'Slack · Manager', text: 'Why is the ticket still in progress?', accent: accents.slack },
-    { label: 'Breaking', text: 'Experts: 2 years left for most junior roles', accent: accents.news },
-    { label: 'Calendar', text: 'All-hands: "Org changes" — 16:00', accent: accents.calendar },
-    { label: 'Changelog', text: 'Your framework is now legacy', accent: accents.ai },
-]
-
 // One texture per text: if a card repeats, don't draw it again
 const cardTextures = new Map()
 const getCardTexture = (item) => {
@@ -866,31 +202,11 @@ const flyingCards = []
 
 /**
  * Bursts
-  * The night isn't an even stream; it has two set pieces. At 22:00, a cold open: the lamp of the colleague across the desk goes out
-  * and a volley of three notifications arrives, so the player is busy from the first seconds and gets what the game is about.
-  * At 02:00, a wave of layoffs: two lamps go out at once and a second volley arrives, so the middle of the night doesn't sag.
-  * After each volley there is a short pause, then the regular stream
+ * The night isn't an even stream; it has two set pieces. At 22:00, a cold open: the lamp of the colleague across the desk goes out
+ * and a volley of three notifications arrives, so the player is busy from the first seconds and gets what the game is about.
+ * At 02:00, a wave of layoffs: two lamps go out at once and a second volley arrives, so the middle of the night doesn't sag.
+ * After each volley there is a short pause, then the regular stream
  */
-const BURSTS = [
-    {
-        at: 0, // fraction of the shift
-        fire: 'neighbour',
-        cards: [
-            { label: 'Slack · #general', text: 'Your access to #team-platform has been removed', accent: accents.slack },
-            { label: 'Calendar', text: '15-min "catch-up" with HR — tomorrow, 9:00', accent: accents.calendar },
-            { label: 'Breaking', text: 'Big Tech cuts 12,000 jobs, cites AI efficiency', accent: accents.news },
-        ],
-    },
-    {
-        at: 0.5, // 02:00
-        fire: 2,
-        cards: [
-            { label: 'Email · CEO', text: 'A message from leadership: "Tough decisions"', accent: accents.email },
-            { label: 'Slack · Manager', text: 'You online? Need you on a call at 7', accent: accents.slack },
-            { label: 'Breaking', text: 'AI agents now close 60% of tickets', accent: accents.news },
-        ],
-    },
-]
 const BURST_FIRE_DELAY = 0.3 // the lamp goes out slightly before the cards
 const BURST_CARD_STEP = 0.7 // interval between cards in a volley
 const BURST_BREATH = 3.5 // pause after a volley before the regular stream resumes
@@ -968,23 +284,13 @@ const DISMISS_DURATION = 0.25
 
 /**
  * Noise
-  * From Middle on, some notifications are noise: mailing lists, LinkedIn, #random. They are grey and semi-transparent,
-  * so they can be told apart from important ones at a glance, without reading the text.
-  * Noise is harmless: if it lands, nothing happens; if you click it, you just wasted time. No new rules:
-  * players notice on their own that grey ones can be ignored and learn to choose where to spend their clicks
+ * From Middle on, some notifications are noise: mailing lists, LinkedIn, #random. They are grey and semi-transparent,
+ * so they can be told apart from important ones at a glance, without reading the text.
+ * Noise is harmless: if it lands, nothing happens; if you click it, you just wasted time. No new rules:
+ * players notice on their own that grey ones can be ignored and learn to choose where to spend their clicks
  */
-const NOISE_ACCENT = '#6b7280'
 const NOISE_OPACITY = 0.7
 const NOISE_SCALE = 0.85
-
-const noiseFeed = [
-    { label: 'Email · All staff', text: 'RE: RE: RE: please remove me from this list' },
-    { label: 'LinkedIn', text: 'Hot take: sleep is a skill issue 🧵 1/47' },
-    { label: 'Slack · #random', text: 'Tabs or spaces? Wrong answers only 👇' },
-    { label: 'Newsletter', text: '10 AI tools you must try this week' },
-    { label: 'Slack · #social', text: 'Who took my oat milk from the fridge?' },
-    { label: 'Email · Facilities', text: 'Reminder: the 3rd floor printer is still broken' },
-].map((item) => ({ ...item, accent: NOISE_ACCENT, noise: true }))
 
 // The level sets the share of noise (game.noiseChance). On Junior it's 0, the feed is as before
 const nextFeedItem = () => {
@@ -1128,69 +434,10 @@ const updateNews = (elapsedTime) => {
     }
 }
 
-/**
- * Job applications
-  * The counter on the second monitor: more and more applications, and the only replies are rejections
- */
-const rejections = [
-    "We'll get back to you",
-    'Unfortunately, we decided to move forward with other candidates',
-    'The position has been filled',
-    "We'll keep your CV on file",
-    'You are overqualified for this role',
-    'We are looking for someone with more AI experience',
-]
-
-const applications = {
-    sent: 211, // he's been applying for months
-    interviews: 0,
-    lastReply: rejections[0],
-    nextAt: 1,
-    interval: 1.6,
-}
-
-const drawJobScreen = () => {
-    jobScreen.redraw((context, width, height, font) => {
-        context.fillStyle = '#0d1117'
-        context.fillRect(0, 0, width, height)
-
-        context.fillStyle = '#84949c'
-        context.font = `500 22px ${font}`
-        context.fillText('JOB APPLICATIONS', 28, 44)
-
-        context.fillStyle = '#d4f1ff'
-        context.font = `400 72px ${font}`
-        context.fillText(String(applications.sent), 28, 128)
-        context.fillStyle = '#84949c'
-        context.font = `500 22px ${font}`
-        context.fillText('sent', 32, 160)
-
-        // Zero interviews is red. The first invitation (only at dawn) is green
-        context.fillStyle = applications.interviews > 0 ? '#34d399' : '#ff6b6b'
-        context.font = `400 72px ${font}`
-        context.fillText(String(applications.interviews), 300, 128)
-        context.fillStyle = '#84949c'
-        context.font = `500 22px ${font}`
-        context.fillText('interviews', 302, 160)
-
-        // Monospace is wide: truncate the phrase so it fits on the screen
-        context.fillStyle = '#c9d6dc'
-        context.font = `italic 400 20px ${font}`
-        const reply = applications.lastReply.length > 36
-            ? `${applications.lastReply.slice(0, 35)}…`
-            : applications.lastReply
-        context.fillText(`“${reply}”`, 28, 240)
-    })
-}
-drawJobScreen()
-// Canvas doesn't wait for web fonts: redraw the screen once IBM Plex Mono has loaded
-monoFontReady.then(drawJobScreen)
-
-// 1–3 more applications, and sometimes a new rejection
-const sendApplications = () => {
-    applications.sent += 1 + Math.floor(Math.random() * 3)
-    if (Math.random() < 0.35) applications.lastReply = pickRandom(rejections)
-    drawJobScreen()
+const getCodeScreenMode = () => {
+    if (experience.phase === 'running') return 'player'
+    if (experience.phase === 'intro' || experience.phase === 'explore') return 'auto'
+    return 'frozen'
 }
 
 const updateApplications = (elapsedTime) => {
@@ -1263,9 +510,9 @@ applyCameraDistance()
 
 /**
  * Camera modes
-  * During the shift the camera is nearly fixed: the office can be turned a little, but not sideways,
-  * zoomed or panned; otherwise a stray swipe that misses a card ruins the whole frame.
-  * The camera is free in Look around mode (no game) and on the final screen
+ * During the shift the camera is nearly fixed: the office can be turned a little, but not sideways,
+ * zoomed or panned; otherwise a stray swipe that misses a card ruins the whole frame.
+ * The camera is free in Look around mode (no game) and on the final screen
  */
 const gameplayView = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target))
 const GAMEPLAY_ROTATE_RANGE = THREE.MathUtils.degToRad(15) // how far the office can be turned left and right
@@ -1307,7 +554,7 @@ const updateCameraReturn = (deltaTime) => {
     if (!cameraReturn.active) return
     cameraReturn.progress = Math.min(1, cameraReturn.progress + deltaTime / CAMERA_RETURN_DURATION)
     const t = cameraReturn.progress
-    const eased = t * t * (3 - 2 * t)
+    const eased = smoothstep(t)
     // Take the short way round, even if auto-rotate has wound up more than a full turn
     const fullTurn = Math.PI * 2
     const thetaDelta = ((gameplayView.theta - cameraReturn.from.theta) % fullTurn + fullTurn * 1.5) % fullTurn - Math.PI
@@ -1335,7 +582,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping
 
 /**
  * Pointer interaction
-  * The Raycaster casts a ray from the camera through the point under the cursor and finds what it hits
+ * The Raycaster casts a ray from the camera through the point under the cursor and finds what it hits
  */
 const raycaster = new THREE.Raycaster()
 const pointer = new THREE.Vector2()
@@ -1345,8 +592,8 @@ const cardScreenPosition = new THREE.Vector3()
 const CARD_HIT_PADDING = 18
 
 /**
-  * Find the card under the cursor in screen pixels rather than with a ray:
-  * that lets us add padding around the card and makes it much easier to hit
+ * Find the card under the cursor in screen pixels rather than with a ray:
+ * that lets us add padding around the card and makes it much easier to hit
  */
 const getCardUnderPointer = (event) => {
     const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)
@@ -1445,43 +692,8 @@ canvas.addEventListener('pointermove', (event) => {
 })
 
 /**
- * Debug
- */
-const sceneFolder = gui.addFolder('Scene')
-sceneFolder.add(params, 'fogDensity').min(0).max(0.2).step(0.001).name('fog density')
-sceneFolder.add(params, 'fogDensityGrowth').min(0).max(0.1).step(0.001).name('fog growth')
-sceneFolder.add(params, 'vignetteStrength').min(0).max(1).step(0.01).name('vignette strength')
-sceneFolder.add(params, 'cameraShake').min(0).max(0.2).step(0.001).name('camera shake')
-sceneFolder.addColor(params, 'background').onChange((value) => {
-    scene.background.set(value)
-    scene.fog.color.set(value)
-})
-
-const lightsFolder = gui.addFolder('Lights')
-lightsFolder.add(ambientLight, 'intensity').min(0).max(1).step(0.01).name('ambient')
-lightsFolder.add(moonLight, 'intensity').min(0).max(2).step(0.01).name('moon')
-lightsFolder.add(params, 'heroLightIntensity').min(0).max(80).step(0.5).name('hero lamp')
-lightsFolder.add(monitorGlow, 'intensity').min(0).max(10).step(0.1).name('monitor glow')
-
-const storyFolder = gui.addFolder('Story')
-storyFolder.add(story, 'autoplay').onChange((value) => {
-    if (value) story.nextFireAt = clock.getElapsedTime() + 1
-})
-storyFolder.add(story, 'firstInterval').min(1).max(20).step(0.5).name('first interval (s)')
-storyFolder.add(story, 'acceleration').min(0.5).max(1).step(0.01)
-storyFolder.add(story, 'minInterval').min(0.5).max(5).step(0.1).name('min interval (s)')
-storyFolder.add({ fireRandomColleague }, 'fireRandomColleague').name('🔥 fire random colleague')
-storyFolder.add({ resetOffice }, 'resetOffice').name('↺ reset office')
-
-const newsFolder = gui.addFolder('News')
-newsFolder.add(news, 'spawnIntervalStart').min(0.5).max(10).step(0.1).name('interval at start')
-newsFolder.add(news, 'spawnIntervalEnd').min(0.1).max(5).step(0.1).name('interval at end')
-newsFolder.add(news, 'flightDurationStart').min(1).max(20).step(0.5).name('flight at start')
-newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight at end')
-
-/**
  * Experience
-  * Story phases: intro (start screen) → running → ending (laptop closed, dawn) → done
+ * Story phases: intro (start screen) → running → ending (laptop closed, dawn) → done
  */
 const experience = {
     phase: 'intro',
@@ -1495,61 +707,8 @@ const experience = {
     lastIntensity: -1,
 }
 
-const ui = {
-    intro: document.querySelector('[data-intro]'),
-    start: document.querySelector('[data-start]'),
-    starts: document.querySelectorAll('[data-start]'),
-    handbook: document.querySelector('[data-handbook]'),
-    handbookOpen: document.querySelector('[data-handbook-open]'),
-    clockPanel: document.querySelector('[data-clock-panel]'),
-    clock: document.querySelector('[data-clock]'),
-    clockGoal: document.querySelector('[data-clock-goal]'),
-    coach: document.querySelector('[data-coach]'),
-    coachText: document.querySelector('[data-coach-text]'),
-    coachSkip: document.querySelector('[data-coach-skip]'),
-    shiftOver: document.querySelector('[data-shift-over]'),
-    goHome: document.querySelector('[data-go-home]'),
-    outroEndings: document.querySelector('[data-outro-endings]'),
-    outro: document.querySelector('[data-outro]'),
-    restart: document.querySelector('[data-restart]'),
-    mute: document.querySelector('[data-mute]'),
-    hud: document.querySelector('[data-hud]'),
-    performance: document.querySelector('[data-meter="performance"]'),
-    stress: document.querySelector('[data-meter="stress"]'),
-    vignette: document.querySelector('[data-vignette]'),
-    whiteout: document.querySelector('[data-whiteout]'),
-    outroTitle: document.querySelector('[data-outro-title]'),
-    outroStory: document.querySelector('[data-outro-story]'),
-    outroStorySender: document.querySelector('[data-outro-story-sender]'),
-    outroStoryTime: document.querySelector('[data-outro-story-time]'),
-    outroStoryTitle: document.querySelector('[data-outro-story-title]'),
-    outroStoryMeta: document.querySelector('[data-outro-story-meta]'),
-    outroStoryText: document.querySelector('[data-outro-story-text]'),
-    outroBody: document.querySelector('[data-outro-body]'),
-    outroCause: document.querySelector('[data-outro-cause]'),
-    outroLine: document.querySelector('[data-outro-line]'),
-    outroTip: document.querySelector('[data-outro-tip]'),
-    outroLog: document.querySelector('[data-outro-log]'),
-    outroEndingName: document.querySelector('[data-outro-ending-name]'),
-    outroSting: document.querySelector('[data-outro-sting]'),
-    outroStingSender: document.querySelector('[data-outro-sting-sender]'),
-    outroStingTime: document.querySelector('[data-outro-sting-time]'),
-    outroStingText: document.querySelector('[data-outro-sting-text]'),
-    outroFound: document.querySelector('[data-outro-found]'),
-    score: document.querySelector('[data-score]'),
-    combo: document.querySelector('[data-combo]'),
-    popups: document.querySelector('[data-popups]'),
-    levelButtons: document.querySelectorAll('[data-level]'),
-    levelDesc: document.querySelector('[data-level-desc]'),
-    promote: document.querySelector('[data-promote]'),
-    explore: document.querySelector('[data-explore]'),
-    exploreBar: document.querySelector('[data-explore-bar]'),
-    exploreHint: document.querySelector('[data-explore-hint]'),
-    exploreBack: document.querySelector('[data-explore-back]'),
-}
 
 // On touch screens say "Tap" instead of "Click"
-const actionWord = window.matchMedia('(pointer: coarse)').matches ? 'Tap' : 'Click'
 for (const element of document.querySelectorAll('[data-action-word]')) element.textContent = actionWord
 
 // While the start screen is up, the camera slowly orbits the office
@@ -1577,8 +736,8 @@ const startShift = () => {
 
 /**
  * Look around
-  * No-game mode: the office is static, nobody gets fired, the camera is free to rotate, zoom and pan.
-  * Exit with Esc or the button; the page simply reloads back to the start screen
+ * No-game mode: the office is static, nobody gets fired, the camera is free to rotate, zoom and pan.
+ * Exit with Esc or the button; the page simply reloads back to the start screen
  */
 // Keeps panning from drifting into the void beyond the office walls
 const EXPLORE_BOUNDS = new THREE.Box3(new THREE.Vector3(-9, 0.3, -7), new THREE.Vector3(9, 3, 7))
@@ -1595,7 +754,7 @@ const startExplore = () => {
     if (ui.handbook.open) ui.handbook.close()
     ui.intro.classList.add('is-hidden')
     setTimeout(() => (ui.intro.hidden = true), 1200)
-    ui.exploreHint.textContent = window.matchMedia('(pointer: coarse)').matches
+    ui.exploreHint.textContent = isCoarsePointer()
         ? 'drag to look around · pinch to zoom · two fingers to move'
         : 'drag to look around · scroll to zoom · right-drag to move'
     ui.exploreBar.hidden = false
@@ -1610,10 +769,10 @@ window.addEventListener('keydown', (event) => {
 })
 
 /**
-  * Look around: the office lives on its own
-  * The same events as during a shift, just rarer and without consequences: now and then a lamp goes out and a ghost rises,
-  * notifications drift slowly towards the hero (no need to click, they melt at his head), rejections pile up on the second monitor.
-  * When the office is almost empty, someone flips the breaker and it all starts over
+ * Look around: the office lives on its own
+ * The same events as during a shift, just rarer and without consequences: now and then a lamp goes out and a ghost rises,
+ * notifications drift slowly towards the hero (no need to click, they melt at his head), rejections pile up on the second monitor.
+ * When the office is almost empty, someone flips the breaker and it all starts over
  */
 const AMBIENT_FIRE_EVERY = [5, 9] // seconds between firings
 const AMBIENT_CARD_EVERY = [3, 5] // between notifications
@@ -1667,8 +826,8 @@ const beginShift = () => {
 
 /**
  * Clock in
-  * The shift starts with a hold, the same mechanic as working at the monitor, so the player learns it before starting.
-  * Let go too early and the bar slides back
+ * The shift starts with a hold, the same mechanic as working at the monitor, so the player learns it before starting.
+ * Let go too early and the bar slides back
  */
 const HOLD_DURATION = 0.9
 const clockIn = { holding: false, progress: 0 }
@@ -1709,8 +868,8 @@ for (const button of ui.starts) {
 }
 
 /**
-  * Handbook is a native <dialog>: the browser handles focus, Esc and the top layer.
-  * It also closes on a backdrop click (the click lands on the dialog itself, not on .handbook-sheet)
+ * Handbook is a native <dialog>: the browser handles focus, Esc and the top layer.
+ * It also closes on a backdrop click (the click lands on the dialog itself, not on .handbook-sheet)
  */
 const closeHandbook = () => {
     if (!ui.handbook.open) return
@@ -1760,12 +919,11 @@ window.addEventListener('pointerdown', () => {
 
 /**
  * Intro lights
-  * While the start screen is up, colleagues' lamps go out one by one: the subtitle comes true before the player's eyes.
-  * When nearly all are out, someone flips the breaker and it starts over.
-  * Only brightness changes (setDeskPower), not state: the shift starts with a fully lit office
+ * While the start screen is up, colleagues' lamps go out one by one: the subtitle comes true before the player's eyes.
+ * When nearly all are out, someone flips the breaker and it starts over.
+ * Only brightness changes (setDeskPower), not state: the shift starts with a fully lit office
  */
 const introLights = { nextAt: 2.5, flickering: null, flickerStart: 0, dark: new Set(), relightAt: 0, minute: -1 }
-const introClock = document.querySelector('[data-intro-clock]')
 
 const restoreIntroLights = () => {
     if (introLights.flickering) setDeskPower(introLights.flickering, 1)
@@ -1781,7 +939,7 @@ const updateIntroLights = (elapsedTime) => {
     const minute = Math.min(Math.floor(elapsedTime / 60), 1)
     if (minute !== introLights.minute) {
         introLights.minute = minute
-        introClock.innerHTML = `21<span class="blink">:</span>${58 + minute}`
+        ui.introClock.innerHTML = `21<span class="blink">:</span>${58 + minute}`
     }
 
     if (introLights.relightAt) {
@@ -1819,30 +977,19 @@ const updateIntroLights = (elapsedTime) => {
 }
 /**
  * Sound toggle
-  * The choice is saved in localStorage so the sound stays off after a reload.
-  * localStorage may be unavailable (e.g. in private mode), hence the try/catch
+ * The choice is saved in localStorage so the sound stays off after a reload
  */
-const MUTE_STORAGE_KEY = 'nightmare-office:muted'
-const muteLabel = document.querySelector('[data-mute-label]')
 
 const setMuted = (muted) => {
     sound.setMuted(muted)
     ui.mute.classList.toggle('is-muted', muted)
-    muteLabel.textContent = muted ? 'Sound off' : 'Sound on'
-    try {
-        localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0')
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
+    ui.muteLabel.textContent = muted ? 'Sound off' : 'Sound on'
+    writeItem(STORAGE_KEYS.muted, muted ? '1' : '0')
 }
 
 const toggleMute = () => setMuted(!sound.isMuted())
 
-try {
-    setMuted(localStorage.getItem(MUTE_STORAGE_KEY) === '1')
-} catch {
-    setMuted(false)
-}
+setMuted(readItem(STORAGE_KEYS.muted) === '1')
 
 ui.mute.addEventListener('click', toggleMute)
 
@@ -1861,8 +1008,8 @@ window.addEventListener('keydown', (event) => {
 
 /**
  * Shift clock
-  * The shift runs from 22:00 to 06:00. Its length in seconds is chosen so that
-  * every colleague has been fired by 06:00
+ * The shift runs from 22:00 to 06:00. Its length in seconds is chosen so that
+ * every colleague has been fired by 06:00
  */
 const shift = {
     start: 0,
@@ -1884,11 +1031,11 @@ const getShiftFraction = (elapsedTime) =>
     THREE.MathUtils.clamp((elapsedTime - shift.start) / shift.duration, 0, 1)
 
 /**
-  * Difficulty within the night: 0 at 22:00 → 1 at 06:00. It drives the Performance decay and the rate and speed of cards.
-  * It used to follow the number of fired colleagues, but firings speed up towards morning, so in the last 20% of the night
-  * difficulty jumped from 0.68 to 1: an even night and then a wall. Now it grows with time, almost linearly.
-  * A curve of 1 means steady growth with no wall at dawn. The volleys (Bursts) fill the quiet start and middle. Fog, lamp flicker and sound
-  * still follow the firings (getStoryProgress): that's atmosphere, not difficulty
+ * Difficulty within the night: 0 at 22:00 → 1 at 06:00. It drives the Performance decay and the rate and speed of cards.
+ * It used to follow the number of fired colleagues, but firings speed up towards morning, so in the last 20% of the night
+ * difficulty jumped from 0.68 to 1: an even night and then a wall. Now it grows with time, almost linearly.
+ * A curve of 1 means steady growth with no wall at dawn. The volleys (Bursts) fill the quiet start and middle. Fog, lamp flicker and sound
+ * still follow the firings (getStoryProgress): that's atmosphere, not difficulty
  */
 const DIFFICULTY_CURVE = 1
 
@@ -1923,7 +1070,7 @@ ui.goHome.addEventListener('click', () => startEnding('calm'))
 
 /**
  * Tension
-  * The more people are fired, the thicker the fog, the more the hero's lamp flickers and the harder the camera shakes
+ * The more people are fired, the thicker the fog, the more the hero's lamp flickers and the harder the camera shakes
  */
 const cameraShake = new THREE.Vector3()
 
@@ -1960,9 +1107,9 @@ const updateTension = (elapsedTime) => {
 
 /**
  * Game
-  * Two meters pull in opposite directions:
-  * Performance grows while you hold the monitor and constantly drains on its own (faster towards the end of the shift)
-  * Stress grows when a notification reaches the head and drops when you dismiss one
+ * Two meters pull in opposite directions:
+ * Performance grows while you hold the monitor and constantly drains on its own (faster towards the end of the shift)
+ * Stress grows when a notification reaches the head and drops when you dismiss one
  */
 const DANGER_LEVEL = 25 // below this mark (above it for Stress) the meter turns red
 
@@ -2036,8 +1183,8 @@ const addDismissScore = (position) => {
 
 /**
  * Hold hint
-  * A pulsing label above the hero's monitor that shows the monitor can be held.
-  * Visible until the player has worked at least once, and again whenever Performance sags
+ * A pulsing label above the hero's monitor that shows the monitor can be held.
+ * Visible until the player has worked at least once, and again whenever Performance sags
  */
 // A glowing hint sprite. The texture is created right away and again once IBM Plex Mono has loaded;
 // otherwise on a first visit the label would keep the fallback font and a wrong width
@@ -2086,17 +1233,6 @@ const updateHoldHint = (elapsedTime) => {
     // The screen also flickers green to hint where to press
     if (needsHint) heroDesk.userData.screen.material.color.lerp(colors.screenWork, 0.15 + 0.35 * pulse)
 }
-
-const gameFolder = gui.addFolder('Game')
-gameFolder.add(game, 'performance').min(0).max(100).step(1).listen()
-gameFolder.add(game, 'stress').min(0).max(100).step(1).listen()
-gameFolder.add(game, 'workRate').min(0).max(50).step(0.5).name('work rate /s')
-gameFolder.add(game, 'performanceDecayStart').min(0).max(20).step(0.5).name('perf decay at start /s')
-gameFolder.add(game, 'performanceDecayEnd').min(0).max(20).step(0.5).name('perf decay at end /s')
-gameFolder.add(game, 'stressPerHit').min(0).max(30).step(1).name('stress per hit')
-gameFolder.add(game, 'stressReliefPerDismiss').min(0).max(10).step(0.5).name('relief per dismiss')
-gameFolder.add(game, 'stressDecay').min(0).max(10).step(0.1).name('stress decay /s')
-gameFolder.add(game, 'respawnChance').min(0).max(1).step(0.05).name('respawn chance')
 
 const onCardHit = () => {
     if (experience.phase !== 'running' || shift.over) return
@@ -2210,11 +1346,10 @@ const updateGame = (elapsedTime, deltaTime) => {
 
 /**
  * Tutorial
-  * On first launch the game teaches two actions in place: hold the monitor, then dismiss one slow notification.
-  * During the tutorial the clock stands still, nobody gets fired and stress doesn't rise.
-  * To replay the tutorial, open the page with #tutorial in the URL
+ * On first launch the game teaches two actions in place: hold the monitor, then dismiss one slow notification.
+ * During the tutorial the clock stands still, nobody gets fired and stress doesn't rise.
+ * To replay the tutorial, open the page with #tutorial in the URL
  */
-const TUTORIAL_STORAGE_KEY = 'nightmare-office:tutorial-done'
 const TUTORIAL_START_PERFORMANCE = 55 // a partly empty meter, so the player sees work filling it
 const TUTORIAL_CARD_DURATION = 10 // the tutorial card flies slowly; regular ones take about 9 s at the start
 const TUTORIAL_DONE_DURATION = 2.5 // how long "Nice!" stays up after the tutorial
@@ -2231,11 +1366,7 @@ const isTutorial = () => tutorial.step === 'work' || tutorial.step === 'dismiss'
 
 const shouldShowTutorial = () => {
     if (window.location.hash === '#tutorial') return true
-    try {
-        return localStorage.getItem(TUTORIAL_STORAGE_KEY) !== '1'
-    } catch {
-        return true
-    }
+    return readItem(STORAGE_KEYS.tutorialDone) !== '1'
 }
 
 const setCoach = (html, hasRing = true) => {
@@ -2269,11 +1400,8 @@ const spawnTutorialCard = (elapsedTime) => {
 }
 
 const finishTutorial = () => {
-    try {
-        localStorage.setItem(TUTORIAL_STORAGE_KEY, '1')
-    } catch {
-        // without localStorage the tutorial just shows again next time
-    }
+    // without localStorage the tutorial just shows again next time
+    writeItem(STORAGE_KEYS.tutorialDone, '1')
     ui.performance.classList.remove('is-coached')
     ui.coachSkip.hidden = true
     beginShift()
@@ -2343,9 +1471,9 @@ const placeCoach = (anchor) => {
 
 /**
  * Callouts
-  * The same bubble as in the tutorial, but one-off: the first time something new shows up during a night
-  * (currently grey noise), an explanation pops up above it for a few seconds. It doesn't introduce a new rule,
-  * it just answers "wait, what's this?"
+ * The same bubble as in the tutorial, but one-off: the first time something new shows up during a night
+ * (currently grey noise), an explanation pops up above it for a few seconds. It doesn't introduce a new rule,
+ * it just answers "wait, what's this?"
  */
 const CALLOUT_DURATION = 4
 const CALLOUT_CARD_PROGRESS = 0.35 // show once the card has covered a third of its path and is visible
@@ -2377,9 +1505,9 @@ const updateCallout = (elapsedTime) => {
 }
 
 /**
-  * Frozen or Very responsive
-  * Both endings mean Performance hit zero. But if the player kept dismissing notifications the whole time,
-  * he got fired for being "responsive". If he just sat and watched, he froze
+ * Frozen or Very responsive
+ * Both endings mean Performance hit zero. But if the player kept dismissing notifications the whole time,
+ * he got fired for being "responsive". If he just sat and watched, he froze
  */
 const FROZEN_AFTER = 8 // this many seconds without a single action and the hero has "frozen"
 const RESPONSIVE_MIN_DISMISSED = 5
@@ -2411,7 +1539,7 @@ const updateLampHold = (deltaTime) => {
 
 /**
  * Lamp hint
-  * A dim label by the hero's lamp: a quiet hint that you can just leave
+ * A dim label by the hero's lamp: a quiet hint that you can just leave
  */
 // The hint is honest about what happens (the night ends), but doesn't forbid it: this is the secret ending
 // fog: false (inside createHintSprite), otherwise the fog eats almost the whole label
@@ -2427,146 +1555,22 @@ const updateLampHint = (elapsedTime) => {
     lampHint.position.y = lampHintBase.y + Math.sin(elapsedTime * 0.8) * 0.04
 }
 
-/**
- * Endings
-  * The finale has two beats:
-  *   story   — the hero's last notification, flying into the scene like an in-game card (an in-world joke)
-  *   summary — the results in terminal style, like the intro: what happened (title), why (cause), a remark (line),
-  *             a tip for the next night (tip) and the shift log
-  * The summary speaks to the player as "you", like the intro and the handbook. This night's numbers come from stats
- *
-  * calm      — made it to 06:00 and went home: the ghosts leave at dawn, the first interview invite shows on the second monitor
-  * fired     — Performance = 0, but he dismissed notifications all night: fired for being "responsive"
-  * frozen    — Performance = 0 and he just sat there: time stops, cards hang in the air
-  * burnout   — Stress = 100: a flash and ringing ears, then a dark, empty office
-  * loggedOff — secret: he switched off his own lamp and left while the ghosts watched him go
- */
-const endings = {
-    calm: {
-        icon: '🌅',
-        name: 'Made it to morning',
-        accent: '#ff8a3d',
-        duration: 8,
-        title: () => 'Made it<br />to 06:00',
-        cause: () => 'You survived the night shift.',
-        line: () => 'The ghosts left at dawn. They can’t stay in daylight. You can. Barely.',
-        story: (stats) => ({
-            sender: 'Email · Recruiter',
-            time: '06:00',
-            title: 'Are you free Tuesday?',
-            meta: `reply to application #${stats.applications}`,
-        }),
-        // One more notification after the summary. The night is survived, but nothing is over
-        sting: { sender: 'Slack · Manager', time: '06:01', text: 'Morning! Quick sync? 🙂' },
-    },
-    fired: {
-        icon: '👻',
-        name: 'Very responsive',
-        accent: '#ff5a5a',
-        duration: 7,
-        title: (stats) => `Fired<br />at ${stats.time}`,
-        cause: () => 'Performance hit zero.',
-        line: (stats) =>
-            stats.dismissed === 0
-                ? 'You didn’t answer a single notification. Nobody answered yours either.'
-                : `You answered ${stats.dismissed} notifications tonight.${stats.missed === 0 ? ' Every single one.' : ''} Nobody answered yours.`,
-        tip: 'Performance only grows while you hold your monitor. Notifications can wait a little.',
-        story: () => ({
-            sender: 'Calendar · HR',
-            title: 'Quick sync? 🙂',
-            meta: '15 min · no agenda · camera on',
-            text: 'Please bring your badge.',
-        }),
-    },
-    frozen: {
-        icon: '🧊',
-        name: 'Frozen',
-        accent: '#7dd3fc',
-        duration: 7,
-        title: (stats) => `Frozen<br />at ${stats.frozenSince}`,
-        cause: (stats) => `Performance hit zero. You stopped working at ${stats.frozenSince}.`,
-        line: () => 'The ghosts drifted past your desk and didn’t look twice. They thought you were one of them.',
-        tip: 'Hold your monitor to work. Sitting still drains performance.',
-        story: (stats) => ({
-            sender: 'Slack · Manager',
-            time: `seen ${stats.frozenSince}`,
-            title: 'are you still there?',
-            text: 'Your status still says 🟢 Active.',
-        }),
-    },
-    burnout: {
-        icon: '🔥',
-        name: 'Out of office',
-        accent: '#9fb4d9',
-        duration: 7,
-        title: (stats) => `Burnt out<br />at ${stats.time}`,
-        cause: () => 'Stress hit 100.',
-        line: (stats) =>
-            stats.missed > 0
-                ? `${stats.missed} notifications got through. Each one landed on you.`
-                : 'Nothing got through. It still landed on you.',
-        tip: 'Click notifications before they reach your desk. Every one that hits adds stress.',
-        story: () => ({
-            sender: 'Automatic reply',
-            title: 'I’m out of office.',
-            text: 'For anything urgent, contact my replacement. It has already read your message.',
-        }),
-    },
-    loggedOff: {
-        icon: '🚪',
-        name: 'Logged off',
-        accent: '#ffd9a0',
-        duration: 9,
-        title: (stats) => `Logged off<br />at ${stats.time}`,
-        cause: () => 'You switched off your own lamp.',
-        line: () => 'Every other light in this office was switched off by someone else.',
-        story: (stats) => ({
-            sender: 'Slack',
-            title: '🔴 Offline',
-            text: `${stats.unread} unread. They’ll keep.`,
-        }),
-        scoreCounts: false, // tonight's score doesn't count, and that's fine
-    },
-}
-
-const ENDINGS_STORAGE_KEY = 'nightmare-office:endings'
-const BEST_SCORE_STORAGE_KEY = 'nightmare-office:best'
-
 // Each level keeps its own best score: Junior and Lead scores aren't comparable.
 // Junior uses the old key so best scores from before levels existed aren't lost
 const getBestScoreKey = () =>
-    currentLevelKey === 'junior' ? BEST_SCORE_STORAGE_KEY : `${BEST_SCORE_STORAGE_KEY}:${currentLevelKey}`
+    currentLevelKey === 'junior' ? STORAGE_KEYS.bestScore : `${STORAGE_KEYS.bestScore}:${currentLevelKey}`
 
-const getBestScore = () => {
-    try {
-        return Number(localStorage.getItem(getBestScoreKey())) || 0
-    } catch {
-        return 0
-    }
-}
+const getBestScore = () => Number(readItem(getBestScoreKey())) || 0
 
 // Saves the best score and reports whether it was beaten
 const saveBestScore = (score) => {
     const previousBest = getBestScore()
-    try {
-        if (score > previousBest) localStorage.setItem(getBestScoreKey(), String(score))
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
+    if (score > previousBest) writeItem(getBestScoreKey(), String(score))
     return { best: Math.max(score, previousBest), isNewBest: score > previousBest }
 }
 
 // Endings the player has already seen, stored in localStorage to show "2/5"
-const saveEnding = (kind) => {
-    try {
-        const found = new Set(JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]'))
-        found.add(kind)
-        localStorage.setItem(ENDINGS_STORAGE_KEY, JSON.stringify([...found]))
-        return found
-    } catch {
-        return new Set([kind])
-    }
-}
+const saveEnding = (kind) => addToSet(STORAGE_KEYS.endings, kind)
 
 const dawn = {
     background: new THREE.Color('#4a3640'),
@@ -2597,13 +1601,7 @@ const startEnding = (kind) => {
     cameraReturn.active = false
     unlockCamera()
     experience.endingStart = elapsedTime
-    experience.endingIsNew = (() => {
-        try {
-            return !JSON.parse(localStorage.getItem(ENDINGS_STORAGE_KEY) || '[]').includes(kind)
-        } catch {
-            return false
-        }
-    })()
+    experience.endingIsNew = !readSet(STORAGE_KEYS.endings).has(kind)
     experience.endingsFound = saveEnding(kind)
     experience.endingTime = shiftTime(elapsedTime)
     experience.endingStats = {
@@ -2795,8 +1793,8 @@ const showOutro = (kind) => {
 }
 
 /**
-  * Restart: "hold to clock in again", the same hold as in the intro.
-  * Its own small requestAnimationFrame loop: by this point the game tick isn't waiting for anything
+ * Restart: "hold to clock in again", the same hold as in the intro.
+ * Its own small requestAnimationFrame loop: by this point the game tick isn't waiting for anything
  */
 const restartHold = { holding: false, progress: 0, last: 0, frame: 0 }
 
@@ -2860,7 +1858,7 @@ const updateCalmEnding = (t, eased) => {
     monitorGlow.intensity = endingFrom.monitorGlow * (1 - screensOff)
 
     // Ghosts can't stand daylight
-    ghostVisibility = 1 - eased
+    setGhostVisibility(1 - eased)
 }
 
 const updateFiredEnding = (elapsedTime) => {
@@ -2890,7 +1888,7 @@ const updateBurnoutEnding = (elapsedTime) => {
     experience.aftermathShown = true
 
     for (const desk of colleagues) setDeskPower(desk, 0)
-    ghostVisibility = 0
+    setGhostVisibility(0)
 
     heroLight.intensity = 0
     setDeskPower(heroDesk, 0)
@@ -2948,7 +1946,7 @@ const updateEnding = (elapsedTime) => {
 
     const kind = experience.ending
     const t = Math.min((elapsedTime - experience.endingStart) / endings[kind].duration, 1)
-    const eased = t * t * (3 - 2 * t) // smoothstep: smooth at the start and at the end
+    const eased = smoothstep(t)
 
     if (kind === 'calm') updateCalmEnding(t, eased)
     if (kind === 'fired') updateFiredEnding(elapsedTime)
@@ -2968,92 +1966,15 @@ const updateEnding = (elapsedTime) => {
 }
 
 /**
- * Levels
-  * The rules are the same on every level: hold the monitor, dismiss notifications.
-  * Levels only change the pace: how fast Performance drains, how often and how fast cards fly,
-  * how much a missed one costs, and how much harmless, distracting noise is mixed in.
- *
-  * Levels form an even ladder: only the easiest (Junior, the game's original numbers) and the hardest (Lead) are defined,
-  * and every level takes values between them by its tier: 0, 1/3, 2/3, 1.
-  * So the difficulty step between neighbouring levels is always the same, and only two sets of numbers need tuning.
-  * Tune them in #debug → Game / News, then copy the numbers here
+ * Levels (the numbers live in levels.js)
  */
-const LEVEL_EASIEST = {
-    game: {
-        performanceDecayStart: 2,
-        performanceDecayEnd: 6,
-        stressPerHit: 8,
-        stressDecay: 1.5,
-        respawnChance: 0.5,
-        noiseChance: 0,
-    },
-    news: { spawnIntervalStart: 3, spawnIntervalEnd: 1.2, flightDurationStart: 9, flightDurationEnd: 3.5 },
-}
-
-const LEVEL_HARDEST = {
-    game: {
-        performanceDecayStart: 4,
-        performanceDecayEnd: 10,
-        stressPerHit: 12,
-        stressDecay: 1, // stress fades slower: missed cards pile up and the second meter adds pressure too
-        respawnChance: 0.55,
-        noiseChance: 0.3,
-    },
-    news: { spawnIntervalStart: 2, spawnIntervalEnd: 0.8, flightDurationStart: 6.5, flightDurationEnd: 2.5 },
-}
-
-const levels = {
-    junior: { tier: 0, name: 'Junior', description: 'The night shift as it is. Hold the monitor, clear notifications.' },
-    middle: { tier: 1 / 3, name: 'Middle', description: 'More notifications, and faster. Some are just noise.' },
-    senior: { tier: 2 / 3, name: 'Senior', description: 'Everything at once. Your work slips away faster.' },
-    lead: { tier: 1, name: 'Lead', description: 'No one is coming to help. Good luck.' },
-}
-
-// Level parameters: each number lies between Junior and Lead, by the level's tier
-const getLevelParams = (group, tier) => Object.fromEntries(
-    Object.keys(LEVEL_EASIEST[group]).map((key) => [
-        key,
-        THREE.MathUtils.lerp(LEVEL_EASIEST[group][key], LEVEL_HARDEST[group][key], tier),
-    ])
-)
-
-const LEVEL_ORDER = Object.keys(levels)
-// Grades from which a step down is offered after a loss, and which endings count as a loss
-// (loggedOff isn't a loss: the hero left on his own)
-const DEMOTE_FROM = ['senior', 'lead']
-const FAIL_ENDINGS = ['fired', 'burnout', 'frozen']
-const LEVEL_STORAGE_KEY = 'nightmare-office:level'
-const PASSED_STORAGE_KEY = 'nightmare-office:passed'
-
 let currentLevelKey = 'junior'
 let currentLevel = levels.junior
 
 // Levels already survived until morning get a checkmark on the start screen
-const getPassedLevels = () => {
-    try {
-        return new Set(JSON.parse(localStorage.getItem(PASSED_STORAGE_KEY) || '[]'))
-    } catch {
-        return new Set()
-    }
-}
-
-const markLevelPassed = (key) => {
-    try {
-        const passed = getPassedLevels()
-        passed.add(key)
-        localStorage.setItem(PASSED_STORAGE_KEY, JSON.stringify([...passed]))
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
-}
-
-const saveLevel = (key) => {
-    try {
-        localStorage.setItem(LEVEL_STORAGE_KEY, key)
-    } catch {
-        // localStorage unavailable (e.g. private mode): nothing to persist
-    }
-}
+const getPassedLevels = () => readSet(STORAGE_KEYS.passedLevels)
+const markLevelPassed = (key) => addToSet(STORAGE_KEYS.passedLevels, key)
+const saveLevel = (key) => writeItem(STORAGE_KEYS.level, key)
 
 const applyLevel = (key) => {
     // hasOwn rather than levels[key]: localStorage could hold something like 'toString'
@@ -3070,7 +1991,7 @@ const applyLevel = (key) => {
     }
     ui.levelDesc.textContent = currentLevel.description
 
-    for (const controller of gui.controllersRecursive()) controller.updateDisplay()
+    debugPanel?.refresh()
 }
 
 for (const button of ui.levelButtons) {
@@ -3097,21 +2018,45 @@ ui.promote.addEventListener('click', () => {
     window.location.reload()
 })
 
-try {
-    applyLevel(localStorage.getItem(LEVEL_STORAGE_KEY))
-} catch {
-    applyLevel('junior')
+applyLevel(readItem(STORAGE_KEYS.level))
+
+/**
+ * Debug panel
+ * Shows only with #debug in the URL, e.g. localhost:5173/#debug. The module (and lil-gui with it)
+ * is loaded on demand, the first time #debug appears
+ */
+let debugPanel = null
+let debugPanelLoading = null
+
+const syncDebugPanel = () => {
+    const visible = window.location.hash === '#debug'
+    if (visible && !debugPanelLoading) {
+        debugPanelLoading = import('./debug.js').then(({ createDebugPanel }) => {
+            debugPanel = createDebugPanel({
+                params,
+                scene,
+                lights: { ambient: ambientLight, moon: moonLight, monitorGlow },
+                story,
+                news,
+                game,
+                clock,
+                fireRandomColleague,
+                resetOffice,
+                levelOrder: LEVEL_ORDER,
+                getLevelKey: () => currentLevelKey,
+                onLevelChange: (key) => {
+                    applyLevel(key)
+                    saveLevel(key)
+                },
+                endingKinds: Object.keys(endings),
+                startEnding,
+            })
+        })
+    }
+    debugPanelLoading?.then(() => debugPanel.show(window.location.hash === '#debug'))
 }
-
-gui.addFolder('Level').add({ level: currentLevelKey }, 'level', LEVEL_ORDER).onChange((key) => {
-    applyLevel(key)
-    saveLevel(key)
-})
-gameFolder.add(game, 'noiseChance').min(0).max(1).step(0.01).name('noise share')
-
-// Endings on a button, so you don't have to play a whole shift for each (works once a shift is running)
-const endingsFolder = gui.addFolder('Endings').close()
-for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => startEnding(kind) }, kind)
+syncDebugPanel()
+window.addEventListener('hashchange', syncDebugPanel)
 
 /**
  * Animate
@@ -3128,10 +2073,9 @@ let outroFraming = 0
 const updateIntroFraming = (deltaTime) => {
     if (experience.phase !== 'intro') introFraming = Math.max(0, introFraming - deltaTime / 1.2)
     if (experience.phase === 'ending' || experience.phase === 'done') outroFraming = Math.min(1, outroFraming + deltaTime / 2.5)
-    const smooth = (x) => x * x * (3 - 2 * x)
     const portrait = sizes.width < sizes.height
-    const shiftY = portrait ? INTRO_PORTRAIT_SHIFT * Math.max(smooth(introFraming), smooth(outroFraming)) : 0
-    const shiftX = portrait ? 0 : -OUTRO_LANDSCAPE_SHIFT * smooth(outroFraming)
+    const shiftY = portrait ? INTRO_PORTRAIT_SHIFT * Math.max(smoothstep(introFraming), smoothstep(outroFraming)) : 0
+    const shiftX = portrait ? 0 : -OUTRO_LANDSCAPE_SHIFT * smoothstep(outroFraming)
     if (shiftX || shiftY) camera.setViewOffset(sizes.width, sizes.height, sizes.width * shiftX, sizes.height * shiftY, sizes.width, sizes.height)
     else if (camera.view && camera.view.enabled) camera.clearViewOffset()
 }
@@ -3150,7 +2094,10 @@ const tick = () => {
     updateGhosts(elapsedTime)
     updateBursts(elapsedTime)
     updateAmbient(elapsedTime)
-    updateCodeScreen(elapsedTime, deltaTime)
+    updateCodeScreen(elapsedTime, deltaTime, {
+        mode: getCodeScreenMode(),
+        working: game.working,
+    })
     updateNews(elapsedTime)
     updateApplications(elapsedTime)
     updateLampHold(deltaTime)
