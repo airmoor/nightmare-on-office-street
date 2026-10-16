@@ -1,6 +1,5 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import GUI from 'lil-gui'
 import { createCardTexture, createGlowLabelTexture, monoFontReady } from './canvasText.js'
 import { createSound } from './sound.js'
 import { BURSTS, endings, firingReasons, newsFeed, noiseFeed } from './content.js'
@@ -14,11 +13,6 @@ import { createClock, hashNoise, isCoarsePointer, pickRandom, prefersReducedMoti
 /**
  * Base
  */
-// The panel only shows with #debug in the URL, e.g. localhost:5173/#debug
-const gui = new GUI({ title: 'Debug' })
-const updateDebugVisibility = () => gui.show(window.location.hash === '#debug')
-updateDebugVisibility()
-window.addEventListener('hashchange', updateDebugVisibility)
 const canvas = document.querySelector('canvas.webgl')
 // Long press is the core mechanic, so the browser's "Save image…" menu must not open on it
 canvas.addEventListener('contextmenu', (event) => event.preventDefault())
@@ -697,41 +691,6 @@ canvas.addEventListener('pointermove', (event) => {
 })
 
 /**
- * Debug
- */
-const sceneFolder = gui.addFolder('Scene')
-sceneFolder.add(params, 'fogDensity').min(0).max(0.2).step(0.001).name('fog density')
-sceneFolder.add(params, 'fogDensityGrowth').min(0).max(0.1).step(0.001).name('fog growth')
-sceneFolder.add(params, 'vignetteStrength').min(0).max(1).step(0.01).name('vignette strength')
-sceneFolder.add(params, 'cameraShake').min(0).max(0.2).step(0.001).name('camera shake')
-sceneFolder.addColor(params, 'background').onChange((value) => {
-    scene.background.set(value)
-    scene.fog.color.set(value)
-})
-
-const lightsFolder = gui.addFolder('Lights')
-lightsFolder.add(ambientLight, 'intensity').min(0).max(1).step(0.01).name('ambient')
-lightsFolder.add(moonLight, 'intensity').min(0).max(2).step(0.01).name('moon')
-lightsFolder.add(params, 'heroLightIntensity').min(0).max(80).step(0.5).name('hero lamp')
-lightsFolder.add(monitorGlow, 'intensity').min(0).max(10).step(0.1).name('monitor glow')
-
-const storyFolder = gui.addFolder('Story')
-storyFolder.add(story, 'autoplay').onChange((value) => {
-    if (value) story.nextFireAt = clock.getElapsedTime() + 1
-})
-storyFolder.add(story, 'firstInterval').min(1).max(20).step(0.5).name('first interval (s)')
-storyFolder.add(story, 'acceleration').min(0.5).max(1).step(0.01)
-storyFolder.add(story, 'minInterval').min(0.5).max(5).step(0.1).name('min interval (s)')
-storyFolder.add({ fireRandomColleague }, 'fireRandomColleague').name('🔥 fire random colleague')
-storyFolder.add({ resetOffice }, 'resetOffice').name('↺ reset office')
-
-const newsFolder = gui.addFolder('News')
-newsFolder.add(news, 'spawnIntervalStart').min(0.5).max(10).step(0.1).name('interval at start')
-newsFolder.add(news, 'spawnIntervalEnd').min(0.1).max(5).step(0.1).name('interval at end')
-newsFolder.add(news, 'flightDurationStart').min(1).max(20).step(0.5).name('flight at start')
-newsFolder.add(news, 'flightDurationEnd').min(1).max(20).step(0.5).name('flight at end')
-
-/**
  * Experience
  * Story phases: intro (start screen) → running → ending (laptop closed, dawn) → done
  */
@@ -1328,17 +1287,6 @@ const updateHoldHint = (elapsedTime) => {
     // The screen also flickers green to hint where to press
     if (needsHint) heroDesk.userData.screen.material.color.lerp(colors.screenWork, 0.15 + 0.35 * pulse)
 }
-
-const gameFolder = gui.addFolder('Game')
-gameFolder.add(game, 'performance').min(0).max(100).step(1).listen()
-gameFolder.add(game, 'stress').min(0).max(100).step(1).listen()
-gameFolder.add(game, 'workRate').min(0).max(50).step(0.5).name('work rate /s')
-gameFolder.add(game, 'performanceDecayStart').min(0).max(20).step(0.5).name('perf decay at start /s')
-gameFolder.add(game, 'performanceDecayEnd').min(0).max(20).step(0.5).name('perf decay at end /s')
-gameFolder.add(game, 'stressPerHit').min(0).max(30).step(1).name('stress per hit')
-gameFolder.add(game, 'stressReliefPerDismiss').min(0).max(10).step(0.5).name('relief per dismiss')
-gameFolder.add(game, 'stressDecay').min(0).max(10).step(0.1).name('stress decay /s')
-gameFolder.add(game, 'respawnChance').min(0).max(1).step(0.05).name('respawn chance')
 
 const onCardHit = () => {
     if (experience.phase !== 'running' || shift.over) return
@@ -2097,7 +2045,7 @@ const applyLevel = (key) => {
     }
     ui.levelDesc.textContent = currentLevel.description
 
-    for (const controller of gui.controllersRecursive()) controller.updateDisplay()
+    debugPanel?.refresh()
 }
 
 for (const button of ui.levelButtons) {
@@ -2126,15 +2074,43 @@ ui.promote.addEventListener('click', () => {
 
 applyLevel(readItem(STORAGE_KEYS.level))
 
-gui.addFolder('Level').add({ level: currentLevelKey }, 'level', LEVEL_ORDER).onChange((key) => {
-    applyLevel(key)
-    saveLevel(key)
-})
-gameFolder.add(game, 'noiseChance').min(0).max(1).step(0.01).name('noise share')
+/**
+ * Debug panel
+ * Shows only with #debug in the URL, e.g. localhost:5173/#debug. The module (and lil-gui with it)
+ * is loaded on demand, the first time #debug appears
+ */
+let debugPanel = null
+let debugPanelLoading = null
 
-// Endings on a button, so you don't have to play a whole shift for each (works once a shift is running)
-const endingsFolder = gui.addFolder('Endings').close()
-for (const kind of Object.keys(endings)) endingsFolder.add({ [kind]: () => startEnding(kind) }, kind)
+const syncDebugPanel = () => {
+    const visible = window.location.hash === '#debug'
+    if (visible && !debugPanelLoading) {
+        debugPanelLoading = import('./debug.js').then(({ createDebugPanel }) => {
+            debugPanel = createDebugPanel({
+                params,
+                scene,
+                lights: { ambient: ambientLight, moon: moonLight, monitorGlow },
+                story,
+                news,
+                game,
+                clock,
+                fireRandomColleague,
+                resetOffice,
+                levelOrder: LEVEL_ORDER,
+                getLevelKey: () => currentLevelKey,
+                onLevelChange: (key) => {
+                    applyLevel(key)
+                    saveLevel(key)
+                },
+                endingKinds: Object.keys(endings),
+                startEnding,
+            })
+        })
+    }
+    debugPanelLoading?.then(() => debugPanel.show(window.location.hash === '#debug'))
+}
+syncDebugPanel()
+window.addEventListener('hashchange', syncDebugPanel)
 
 /**
  * Animate
