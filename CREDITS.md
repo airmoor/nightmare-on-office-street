@@ -1,11 +1,10 @@
 # Credits
 
-Записывай сюда каждый ассет сразу, как только его добавляешь.
-
-| Ассет | Автор | Ссылка | Лицензия | AI-generated? |
+| Asset | Author | Link | License | AI-generated? |
 |---|---|---|---|---|
 | — | — | — | — | — |
 
-Внешних ассетов нет: все модели собраны из примитивов Three.js, звук сгенерирован кодом (Web Audio API).
+There are no external assets: every model is built from Three.js primitives and all sound is generated in code
+with the Web Audio API.
 
-Код: Three.js, lil-gui, Vite. 
+Code: [Three.js](https://threejs.org/), [lil-gui](https://lil-gui.georgealways.com/), [Vite](https://vite.dev/).
