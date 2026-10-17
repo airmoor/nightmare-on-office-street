@@ -1971,6 +1971,11 @@ const updateEnding = (elapsedTime) => {
 let currentLevelKey = 'junior'
 let currentLevel = levels.junior
 
+// Debug panel handle (see Debug panel below). Declared before applyLevel, which refreshes it:
+// applyLevel runs on load, and reading a `let` before its declaration throws
+let debugPanel = null
+let debugPanelLoading = null
+
 // Levels already survived until morning get a checkmark on the start screen
 const getPassedLevels = () => readSet(STORAGE_KEYS.passedLevels)
 const markLevelPassed = (key) => addToSet(STORAGE_KEYS.passedLevels, key)
@@ -2025,9 +2030,6 @@ applyLevel(readItem(STORAGE_KEYS.level))
  * Shows only with #debug in the URL, e.g. localhost:5173/#debug. The module (and lil-gui with it)
  * is loaded on demand, the first time #debug appears
  */
-let debugPanel = null
-let debugPanelLoading = null
-
 const syncDebugPanel = () => {
     const visible = window.location.hash === '#debug'
     if (visible && !debugPanelLoading) {
