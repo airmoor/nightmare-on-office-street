@@ -1,102 +1,81 @@
-# Nightmare on Office Street — Three.js Journey Halloween Challenge
+# Nightmare on Office Street
 
-Ночной опенспейс. Коллег одного за другим увольняют за «low performance»,
-лампы над их столами гаснут, темнота сжимается вокруг маленького человека,
-который просто хочет спокойно жить.
+A small Halloween story about layoffs, AI hype and a guy who just wants a quiet life.
+Built with Three.js for the [Three.js Journey](https://threejs-journey.com/) Halloween challenge.
 
-## Запуск
+**▶ Play: [nightmare-on-office-street.vercel.app](https://nightmare-on-office-street.vercel.app/)**
+
+![A dark open-plan office at night with a single lit desk](static/og-image.jpg)
+
+It's the night shift in an open office. One by one, your colleagues get fired: their lamps
+flicker and go out, and they rise from their chairs as ghosts carrying a box of their things.
+Notifications fly at you out of the dark. Survive until 06:00.
+
+## How to play
+
+- **Hold your monitor** to work. Performance drains on its own, so keep it up.
+- **Click (or tap) notifications** before they reach you. Each one that lands adds stress.
+- Make it to **06:00** without hitting zero performance or full stress.
+- Pick a **role** on the start screen: Junior, Middle, Senior or Lead. The rules stay the same, the pace doesn't.
+- There are **five endings**, and one of them is a secret.
+- Not in the mood to play? **Look around** turns the office into a slow, living diorama you can explore.
+
+| Key | Action |
+|---|---|
+| Hold / click | work, dismiss notifications |
+| `M` | toggle sound |
+| `Esc` | leave Look around mode |
+
+## Highlights
+
+- **One real light.** Only the hero's lamp is a real `SpotLight` with shadows. Every other desk fakes it
+  with an unlit bulb mesh and an additive light pool on the floor, which keeps twenty lamps cheap on phones.
+- **Forgiving hit testing.** Cards are tested in screen pixels with padding rather than with a raycast,
+  and dismissed on press instead of release, so fast-moving targets are actually catchable on touch screens.
+- **Procedural audio.** The hum, ventilation hiss, heartbeat, pings and the final chord are all generated
+  with the Web Audio API. There are no audio files.
+- **Canvas text everywhere.** Notifications, labels and both of the hero's monitors (a typing code editor and a
+  job application counter) are drawn on canvas textures.
+- **A level ladder from two presets.** Only Junior and Lead are tuned by hand; Middle and Senior are interpolated
+  between them, so the difficulty step is always even.
+- **Accessible where it counts.** Keyboard and screen reader users can start without holding, the handbook is a
+  native `<dialog>`, and `prefers-reduced-motion` turns off flicker and long transitions.
+
+## Run locally
 
 ```bash
 npm install
-npm run dev
+npm run dev      # dev server
+npm run build    # production build in dist/
+npm run lint     # ESLint
 ```
 
-## Как устроен код (`src/main.js`)
+Useful URL hashes:
 
-| Блок | Что делает | Урок курса |
-|---|---|---|
-| `createLightPoolTexture` | рисует мягкое пятно света на canvas | Textures |
-| `geometries` / `materials` | общие геометрии и материалы для всех столов | Geometries, Materials |
-| `createDesk` | собирает стол: столешница, монитор, стул, человек, лампа, пятно света | Geometries, Objects |
-| `office` + цикл `for` | раскладывает столы сеткой, один из них — героя | Transform objects |
-| Lights | ambient + «луна» + **один** настоящий SpotLight над героем | Lights, Shadows |
-| `fireColleague` / `updateColleagues` | лампа мигает 1.2 с, гаснет, человек исчезает | Animations |
-| `showFiringLabel` / `updateFiringLabels` | надпись-причина над столом: появляется, поднимается, тает | Animations, Sprites |
-| `story` / `updateStory` | таймер увольнений, каждый следующий интервал короче: `firstInterval * acceleration ^ firedCount` | Animations |
-| `BURSTS` / `updateBursts` | два залпа: в 22:00 гаснет лампа у соседа и прилетают три уведомления (cold open), в 02:00 гаснут сразу две лампы и прилетает второй залп; после каждого — пауза 3.5 с | Animations |
-| `newsFeed` / `updateNews` | карточки новостей летят к голове героя, чем дальше — тем чаще и быстрее | Animations |
-| `applications` / `drawJobScreen` | второй монитор: счётчик откликов и отказы, перерисовывается canvas | Textures |
-| `CODE_FILES` / `updateCodeScreen` | главный монитор героя — редактор: пока держишь монитор, текст набирается по символу; по кругу три файла — тикет, самооценка к review, резюме | Textures |
-| `createGhostGeometry` / `updateGhosts` | призрак из LatheGeometry с волнистым подолом, поднимается со стула и бродит по кругу | Geometries, Animations |
-| `getCardUnderPointer` / `dismissCard` | клик по карточке: Raycaster находит спрайт, карточка лопается, рядом появляются две новые | Raycaster and Mouse Events |
-| `experience` / `startShift` | фазы истории: intro → running → ending → done, стартовый экран | — |
-| `updateTension` | туман сгущается, лампа героя коротит, камера дрожит | Animations |
-| `updateEnding` | анимация концовки: свет, призраки, камера подлетает к герою | Animations, Lights |
-| `lampHint` / `canLogOff` | во второй половине ночи у лампы героя тускло светится «switch it off?» — по клику на лампу он уходит | Raycaster, Sprites |
-| `game` / `updateGame` | две шкалы: Performance (держи монитор) и Stress (закрывай карточки), виньетка стресса | — |
-| `addDismissScore` / `getMultiplier` | очки: +5/с за работу, +10 × комбо за карточку, +500 за спокойную концовку, рекорд в localStorage | — |
-| `holdHint` / `updateHoldHint` | пульсирующая надпись HOLD TO WORK над монитором, пока игрок не начал работать | Sprites |
-| `shift` / `endShift` | часы смены 22:00 → 06:00; в 06:00 шкалы замирают и появляется «Go home» | — |
-| `getCardUnderPointer` | попадание по карточке считается в пикселях экрана с запасом 18 px, срабатывает сразу при нажатии | Raycaster |
-| `startEnding` / `endings` | пять концовок, каждая — последнее уведомление героя с цифрами этой ночи: calm (дожил до 06:00), fired (Performance = 0, но закрывал уведомления), frozen (Performance = 0 и ничего не делал — карточки замирают в воздухе), burnout (Stress = 100), loggedOff (секретная: выключил свою лампу и ушёл, счёт не считается) | — |
-| `src/sound.js` | весь звук генерируется Web Audio API: гул, шипение, сердцебиение, пинги, финальный аккорд | — |
-| `src/canvasText.js` | рисование текста на canvas → текстура (карточки, надписи, экран) | Textures |
-| `levels` / `applyLevel` | четыре уровня с одинаковыми правилами — меняется только темп; выбор на стартовом экране, запоминается в localStorage | — |
-| `noiseFeed` | Middle+: серые полупрозрачные карточки-шум — безвредны: долетел — ничего, кликнул — без очков | Sprites |
-| `showCallout` | при первом шуме за ночь — пузырь «Grey ones are noise — safe to ignore» | — |
-| `lockCamera` / `startCameraReturn` | во время смены камера почти зафиксирована: ±15° по кругу, ±8° по наклону, без зума и панорамы; на старте плавно возвращается в игровой ракурс | Camera, Orbit controls |
-| `startExplore` / `updateAmbient` | режим «or just look around» на стартовом экране: без игры, свободная камера в пределах офиса, выход по Esc. Офис живёт сам: раз в 5–9 с гаснет лампа и поднимается призрак, раз в 3–5 с к герою медленно летит уведомление, на втором мониторе копятся отказы; когда остаётся 5 коллег — рубильник, и всё сначала | Orbit controls |
-| Debug (lil-gui) | крутилки тумана, света, темпа истории и новостей, выбор уровня | Debug UI |
+- `#debug` loads a lil-gui panel for tuning fog, lights, pacing and levels, and has buttons to trigger each ending.
+- `#tutorial` replays the first-run tutorial.
 
-## Уровни
+## Project structure
 
-Правила везде одни: держи монитор, закрывай уведомления. Уровни — ровная лестница:
-в коде заданы только Junior (`LEVEL_EASIEST`, исходные цифры игры) и Lead (`LEVEL_HARDEST`),
-а каждый уровень берёт значения между ними по `tier` (0, ⅓, ⅔, 1) — шаг между соседями одинаковый.
+```
+src/
+  main.js        game loop, camera, input, story pacing, tutorial and endings
+  office.js      floor, desks, colleagues and the hero's desk
+  ghosts.js      ghosts of fired colleagues
+  screens.js     the hero's two monitors
+  content.js     all of the game's text: code files, notifications, endings
+  levels.js      difficulty presets and interpolation
+  sound.js       procedural audio
+  canvasText.js  text → canvas texture helpers
+  debug.js       lil-gui panel, loaded only with #debug
+  storage.js     guarded localStorage helpers
+  ui.js          DOM references
+  utils.js       clock and small helpers
+```
 
-| | Junior | Middle | Senior | Lead |
-|---|---|---|---|---|
-| Спад Performance, /с (22:00 → 06:00) | 2 → 6 | 2.7 → 7.3 | 3.3 → 8.7 | 4 → 10 |
-| Новая карточка каждые, с | 3 → 1.2 | 2.7 → 1.07 | 2.3 → 0.93 | 2 → 0.8 |
-| Время полёта, с | 9 → 3.5 | 8.2 → 3.2 | 7.3 → 2.8 | 6.5 → 2.5 |
-| Stress за пропущенную карточку | 8 | 9.3 | 10.7 | 12 |
-| Stress уходит сам, /с | 1.5 | 1.33 | 1.17 | 1 |
-| Шанс новой карточки на месте закрытой | 50% | 52% | 53% | 55% |
-| Доля шума | — | 10% | 20% | 30% |
+More on how the pieces fit together is in [docs/architecture.md](docs/architecture.md).
 
-**Сложность внутри ночи** (`getNightDifficulty`) растёт по времени смены: линейно (`fraction ^ 1`). Частота карточек тоже растёт линейно: интерполируется не интервал, а число карточек в секунду, иначе последний час почти удваивал поток. Пустоту в начале и в середине закрывают два залпа (`BURSTS`).
-Раньше она шла за числом уволенных, а увольнения к утру учащаются — последние 20% ночи сложность прыгала
-с 0.68 до 1, получалась стена в конце. Туман, мигание лампы и звук по-прежнему идут за увольнениями.
+## Credits
 
-**Полоска ночи** под часами: 22:00 ——●—— 06:00, заливка теплеет к рассвету (CSS-переменная `--night`).
-
-Рекорд у каждого уровня свой (у Junior — старый ключ, прежний рекорд сохраняется).
-После спокойной концовки появляется кнопка «Get promoted →», у пройденных уровней на стартовом экране — ✓.
-После проигрыша на Senior или Lead (fired, burnout, frozen) — «Step down ←» на уровень ниже (`DEMOTE_FROM`, `FAIL_ENDINGS`).
-Цифры подбирать в `#debug` → Game / News, переносить в `LEVEL_EASIEST` / `LEVEL_HARDEST`.
-
-**Почему лампы коллег «фейковые».** Десятки PointLight сильно тормозят, особенно на телефоне.
-Поэтому у коллег есть только светящаяся лампочка (`MeshBasicMaterial`) и пятно на полу
-(`AdditiveBlending`), а настоящий свет с тенями стоит только над героем.
-
-## План
-
-- [x] **Неделя 1 (5–11 окт):** каркас, опенспейс, туман, лампы, увольнение по кнопке
-- [x] **Неделя 2 (12–18 окт):** таймлайн с ускорением увольнений, всплывающее «Low performance»,
-      летящие новости, счётчик откликов на втором мониторе
-- [x] первый деплой на Vercel — https://nightmare-on-office-street.vercel.app/
-- [x] **Неделя 3 (19–25 окт):** призраки уволенных коллег с коробками, клик по уведомлению (Raycaster)
-- [ ] модели Kenney вместо коробок (по желанию)
-- [x] **Неделя 4 (26 окт – 2 нов):** звук + экран «Start shift», мерцание, дрожание камеры,
-      финал с рассветом, проверка на телефоне
-- [ ] проверить на своём реальном телефоне (звук, тапы по карточкам)
-- [ ] скриншот для поста, описание, credits
-- [ ] пост в Discord **до 2 ноября 20:00**
-
-## Идеи для следующего шага
-
-- Заменить кнопку на таймер: `setTimeout`/`clock`, интервал между увольнениями уменьшается.
-- Над погасшим столом показывать текст «Low performance» (Canvas-текстура на плоскости или 3D Text).
-- Погасший стол → на его месте появляется призрак (сфера + цилиндр, полупрозрачный материал).
-
-Ассеты и их лицензии — в [CREDITS.md](CREDITS.md).
+Three.js, lil-gui and Vite. All models are built from Three.js primitives and all sound is generated in code,
+so there are no third-party assets. See [CREDITS.md](CREDITS.md).
