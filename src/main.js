@@ -301,9 +301,45 @@ const nextFeedItem = () => {
 // A random point on a ring around the hero, somewhere in the dark.
 // Skip the sector on the camera side: a card from there flies straight into the lens and blows up into a blurry blob covering half the screen
 const CAMERA_SIDE_GAP = THREE.MathUtils.degToRad(50)
-const randomSpawnPoint = () => {
+
+// Independent random angles happily send three cards in a row from the same sector, and then the player just taps
+// one spot over and over. So remember where the last few came from and pick the candidate farthest from all of them
+const RECENT_SPAWN_COUNT = 3
+const SPAWN_CANDIDATES = 6
+const recentSpawnAngles = []
+
+const angleBetween = (a, b) => {
+    const difference = Math.abs(a - b) % (Math.PI * 2)
+    return Math.min(difference, Math.PI * 2 - difference)
+}
+
+const angleAroundHero = (position) => Math.atan2(position.z - heroHead.z, position.x - heroHead.x)
+
+const rememberSpawnAngle = (angle) => {
+    recentSpawnAngles.push(angle)
+    if (recentSpawnAngles.length > RECENT_SPAWN_COUNT) recentSpawnAngles.shift()
+}
+
+const pickSpawnAngle = () => {
     const cameraAngle = Math.atan2(camera.position.z - heroHead.z, camera.position.x - heroHead.x)
-    const angle = cameraAngle + CAMERA_SIDE_GAP + Math.random() * (Math.PI * 2 - CAMERA_SIDE_GAP * 2)
+    let bestAngle = 0
+    let bestDistance = -1
+    for (let i = 0; i < SPAWN_CANDIDATES; i++) {
+        const angle = cameraAngle + CAMERA_SIDE_GAP + Math.random() * (Math.PI * 2 - CAMERA_SIDE_GAP * 2)
+        const distance = recentSpawnAngles.length
+            ? Math.min(...recentSpawnAngles.map((recent) => angleBetween(angle, recent)))
+            : Math.PI
+        if (distance > bestDistance) {
+            bestAngle = angle
+            bestDistance = distance
+        }
+    }
+    rememberSpawnAngle(bestAngle)
+    return bestAngle
+}
+
+const randomSpawnPoint = () => {
+    const angle = pickSpawnAngle()
     const radius = THREE.MathUtils.lerp(SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX, Math.random()) * SPAWN_SCALE
     return new THREE.Vector3(
         heroHead.x + Math.cos(angle) * radius,
@@ -371,11 +407,11 @@ const dismissCard = (card) => {
     game.stress = Math.max(0, game.stress - game.stressReliefPerDismiss)
 
     // No extra cards during the tutorial: the player learns on a single one
+    // It comes from elsewhere in the dark, not from under the finger: otherwise tapping one spot clears a whole chain.
+    // The dismissed card's direction counts as recent, so the new one flies in from a different side
     if (!isTutorial() && Math.random() < game.respawnChance) {
-        const offset = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
-            .normalize()
-            .multiplyScalar(0.8)
-        spawnCard(nextFeedItem(), elapsedTime, { from: card.sprite.position.clone().add(offset) })
+        rememberSpawnAngle(angleAroundHero(card.sprite.position))
+        spawnCard(nextFeedItem(), elapsedTime)
     }
 }
 
@@ -636,20 +672,43 @@ const isPointerOn = (event, object) => {
 const isPointerOnMonitor = (event) => isPointerOn(event, workHitbox)
 const isPointerOnLamp = (event) => canLogOff() && isPointerOn(event, lampHitbox)
 
-// While a finger or mouse button is busy with a card or the monitor, don't rotate the camera
-let isPointerBusy = false
+// Fingers (or the mouse button) currently pressing a card, the monitor or the lamp.
+// The camera doesn't rotate until all of them are released
+const busyPointers = new Set()
+// Which pointer is doing the work / holding the lamp: only lifting that one stops it
+let workPointerId = null
+let lampPointerId = null
 
-const holdPointer = () => {
-    isPointerBusy = true
+const holdPointer = (event) => {
+    busyPointers.add(event.pointerId)
     controls.enabled = false
 }
 
-const releasePointer = () => {
+const releasePointer = (event) => {
+    if (event.pointerId === workPointerId) {
+        game.working = false
+        workPointerId = null
+    }
+    // All fingers are off the screen: nothing is resting on the monitor any more
+    if (busyPointers.has(event.pointerId) && busyPointers.size === 1) game.workInterrupted = false
+    if (event.pointerId === lampPointerId) {
+        lampHold.holding = false
+        lampPointerId = null
+    }
+    if (!busyPointers.delete(event.pointerId)) return
+    if (busyPointers.size === 0 && experience.phase === 'running') controls.enabled = true
+}
+
+// One action at a time, like with a mouse: a mouse can't hold the monitor and click a card at once,
+// so on touch screens a tap with another finger interrupts work too. The finger still resting on the monitor
+// doesn't resume it: lift and press again. Otherwise two thumbs remove the game's core trade-off
+const interruptHolds = () => {
+    // A finger is still resting on the monitor but no longer counts: the hint above the monitor says so
+    if (workPointerId !== null) game.workInterrupted = true
     game.working = false
+    workPointerId = null
     lampHold.holding = false
-    if (!isPointerBusy) return
-    isPointerBusy = false
-    if (experience.phase === 'running') controls.enabled = true
+    lampPointerId = null
 }
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -659,23 +718,29 @@ canvas.addEventListener('pointerdown', (event) => {
     // in the 100–200 ms between them a fast card can fly out from under the cursor
     const card = getCardUnderPointer(event)
     if (card) {
+        interruptHolds()
         dismissCard(card)
-        holdPointer()
+        holdPointer(event)
         return
     }
 
     // Holding the monitor: the hero works
     if (isPointerOnMonitor(event)) {
+        interruptHolds()
         game.working = true
-        holdPointer()
+        game.workInterrupted = false
+        workPointerId = event.pointerId
+        holdPointer(event)
         return
     }
 
     // Holding his own lamp: the light slowly dims; hold to the end and he switches it off and leaves.
     // A hold rather than a tap: on phones the lamp is next to the monitor, and a stray tap used to end the night
     if (isPointerOnLamp(event)) {
+        interruptHolds()
         lampHold.holding = true
-        holdPointer()
+        lampPointerId = event.pointerId
+        holdPointer(event)
     }
 })
 
@@ -1136,6 +1201,7 @@ const game = {
     // Score
     score: 0,
     combo: 0, // cards dismissed in a row without a miss
+    workInterrupted: false, // a card tap stopped work while a finger still rests on the monitor (touch only)
     hasWorked: false, // whether the player has worked at all; until then the hint above the monitor shows
     workPointsPerSecond: 5,
     dismissPoints: 10,
@@ -1219,16 +1285,30 @@ const holdHintBase = heroDesk.position.clone().add(new THREE.Vector3(0, 1.62, -0
 holdHint.position.copy(holdHintBase)
 scene.add(holdHint)
 
+// After a card tap interrupts work, a finger resting on the monitor doesn't count any more. Without this label
+// it looks like the game ignores you; this one says exactly what to do
+const pressAgainHint = createHintSprite('LIFT & HOLD AGAIN', '#d4f1ff', { depthTest: false })
+pressAgainHint.renderOrder = 10
+pressAgainHint.position.copy(holdHintBase)
+pressAgainHint.material.opacity = 0
+scene.add(pressAgainHint)
+
 const updateHoldHint = (elapsedTime) => {
-    const needsHint = experience.phase === 'running' && !shift.over && !game.working
-        && (!game.hasWorked || game.performance < DANGER_LEVEL + 15)
+    const isRunning = experience.phase === 'running' && !shift.over && !game.working
+    const needsPressAgain = isRunning && game.workInterrupted
+    const needsHint = isRunning && (needsPressAgain || !game.hasWorked || game.performance < DANGER_LEVEL + 15)
     const pulse = 0.5 + 0.5 * Math.sin(elapsedTime * 5)
 
     // Fade in and out smoothly
     // During the tutorial a big coach bubble replaces the label above the monitor (see Tutorial)
     const target = needsHint && !isTutorial() ? 0.6 + 0.4 * pulse : 0
-    holdHint.material.opacity += (target - holdHint.material.opacity) * 0.15
+    // One label at a time: "lift & hold again" replaces "hold to work" while a finger is resting idle
+    const holdTarget = needsPressAgain ? 0 : target
+    const pressAgainTarget = needsPressAgain ? target : 0
+    holdHint.material.opacity += (holdTarget - holdHint.material.opacity) * 0.15
+    pressAgainHint.material.opacity += (pressAgainTarget - pressAgainHint.material.opacity) * 0.15
     holdHint.position.y = holdHintBase.y + Math.sin(elapsedTime * 2.5) * 0.03
+    pressAgainHint.position.y = holdHint.position.y
 
     // The screen also flickers green to hint where to press
     if (needsHint) heroDesk.userData.screen.material.color.lerp(colors.screenWork, 0.15 + 0.35 * pulse)
