@@ -1639,6 +1639,14 @@ h2 {
     overflow-y: auto;
   }
 
+  /* The summary can be taller than the screen, so .outro scrolls here. Pin the grain and the gradient to the viewport:
+     the grain is 50% bigger than the screen on every side (so its jitter never shows an edge), and as an absolute child
+     it stretched the scroll area by half a screen of empty space. The gradient would also scroll away with the text */
+  .outro .intro-grain,
+  .outro::before {
+    position: fixed;
+  }
+
   .outro.is-summary {
     justify-content: flex-start;
   }
@@ -1647,8 +1655,15 @@ h2 {
     margin-top: auto;
   }
 
+  /* On a phone the summary often fills the whole screen, title at the very top, so the darkening can't fade out
+     to nothing: the top keeps enough of it to read over the lit desk while the office still shows through */
   .outro::before {
-    background: linear-gradient(0deg, rgba(3, 5, 8, 0.94) 0%, rgba(3, 5, 8, 0.8) 45%, rgba(3, 5, 8, 0) 70%);
+    background: linear-gradient(0deg, rgba(3, 5, 8, 0.94) 0%, rgba(3, 5, 8, 0.86) 50%, rgba(3, 5, 8, 0.7) 100%);
+  }
+
+  /* A soft dark halo for the lines that still cross the bright monitors */
+  .outro-body {
+    text-shadow: 0 1px 10px rgba(3, 5, 8, 0.9), 0 0 2px rgba(3, 5, 8, 0.8);
   }
 
   .outro-story {
