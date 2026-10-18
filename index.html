@@ -22,6 +22,8 @@
     <meta name="twitter:title" content="Nightmare on Office Street" />
     <meta name="twitter:description" content="Night shift in an open office. One by one, the lights go out. Survive until 06:00." />
     <meta name="twitter:image" content="https://nightmare-on-office-street.vercel.app/og-image.jpg" />
+    <meta name="twitter:creator" content="@shatskaiadev" />
+    <meta name="author" content="Anastasia Shatskaia" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" />
@@ -61,6 +63,8 @@
         <button type="button" class="handbook-toggle" data-handbook-open aria-haspopup="dialog" aria-controls="handbook">read the handbook<span class="handbook-caret" aria-hidden="true"></span></button>
         <!-- No game: just walk around the office and look at the scene -->
         <button type="button" class="handbook-toggle explore-toggle" data-explore>or just look around<span class="handbook-caret" aria-hidden="true"></span></button>
+        <!-- Author: quiet, below the actions, opens in a new tab so the scene keeps running -->
+        <p class="author">by Anastasia Shatskaia<span class="author-links"><a href="https://x.com/shatskaiadev" target="_blank" rel="noopener" aria-label="Anastasia Shatskaia on X (opens in a new tab)">x</a><a href="https://www.linkedin.com/in/anastasia-shatskaia/" target="_blank" rel="noopener" aria-label="Anastasia Shatskaia on LinkedIn (opens in a new tab)">linkedin</a></span></p>
 
         <dialog class="handbook" id="handbook" data-handbook aria-labelledby="handbook-title">
           <div class="handbook-sheet">
@@ -186,6 +190,7 @@
         <!-- Grade change: a promotion after the calm ending, a step down after losing on Senior/Lead -->
         <button type="button" class="outro-promote" data-promote hidden></button>
 
+        <p class="author">by Anastasia Shatskaia<span class="author-links"><a href="https://x.com/shatskaiadev" target="_blank" rel="noopener" aria-label="Anastasia Shatskaia on X (opens in a new tab)">x</a><a href="https://www.linkedin.com/in/anastasia-shatskaia/" target="_blank" rel="noopener" aria-label="Anastasia Shatskaia on LinkedIn (opens in a new tab)">linkedin</a></span></p>
         <p class="credits">Made with Three.js · All models are primitives · Sound generated with Web Audio</p>
       </div>
     </section>

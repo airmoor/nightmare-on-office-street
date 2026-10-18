@@ -1692,6 +1692,62 @@ h2 {
   }
 }
 
+/**
+ * Author line on the intro and the outro summary: a quiet terminal footer, links open in a new tab
+ */
+.author {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 16px;
+  margin-top: clamp(16px, 3vh, 28px);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.author-links {
+  display: inline-flex;
+  gap: 16px;
+}
+
+.author a {
+  display: inline-block;
+  padding: 8px 0 2px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.author a::after {
+  content: ' ↗';
+  opacity: 0.6;
+}
+
+.author a:hover {
+  color: var(--glow);
+  border-color: rgba(190, 235, 255, 0.45);
+}
+
+.author a:focus-visible {
+  outline: 1px dashed var(--glow);
+  outline-offset: 4px;
+}
+
+.outro .author {
+  margin-top: 20px;
+}
+
+.outro .author + .credits {
+  margin-top: 6px;
+}
+
+@media (max-height: 640px) {
+  .author {
+    margin-top: 12px;
+  }
+}
+
 /* Look around: a start-screen button styled like the handbook one, with its own icon */
 .explore-toggle {
   display: flex;
