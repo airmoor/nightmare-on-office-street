@@ -636,20 +636,39 @@ const isPointerOn = (event, object) => {
 const isPointerOnMonitor = (event) => isPointerOn(event, workHitbox)
 const isPointerOnLamp = (event) => canLogOff() && isPointerOn(event, lampHitbox)
 
-// While a finger or mouse button is busy with a card or the monitor, don't rotate the camera
-let isPointerBusy = false
+// Fingers (or the mouse button) currently pressing a card, the monitor or the lamp.
+// The camera doesn't rotate until all of them are released
+const busyPointers = new Set()
+// Which pointer is doing the work / holding the lamp: only lifting that one stops it
+let workPointerId = null
+let lampPointerId = null
 
-const holdPointer = () => {
-    isPointerBusy = true
+const holdPointer = (event) => {
+    busyPointers.add(event.pointerId)
     controls.enabled = false
 }
 
-const releasePointer = () => {
+const releasePointer = (event) => {
+    if (event.pointerId === workPointerId) {
+        game.working = false
+        workPointerId = null
+    }
+    if (event.pointerId === lampPointerId) {
+        lampHold.holding = false
+        lampPointerId = null
+    }
+    if (!busyPointers.delete(event.pointerId)) return
+    if (busyPointers.size === 0 && experience.phase === 'running') controls.enabled = true
+}
+
+// One action at a time, like with a mouse: a mouse can't hold the monitor and click a card at once,
+// so on touch screens a tap with another finger interrupts work too. The finger still resting on the monitor
+// doesn't resume it: lift and press again. Otherwise two thumbs remove the game's core trade-off
+const interruptHolds = () => {
     game.working = false
+    workPointerId = null
     lampHold.holding = false
-    if (!isPointerBusy) return
-    isPointerBusy = false
-    if (experience.phase === 'running') controls.enabled = true
+    lampPointerId = null
 }
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -659,23 +678,28 @@ canvas.addEventListener('pointerdown', (event) => {
     // in the 100–200 ms between them a fast card can fly out from under the cursor
     const card = getCardUnderPointer(event)
     if (card) {
+        interruptHolds()
         dismissCard(card)
-        holdPointer()
+        holdPointer(event)
         return
     }
 
     // Holding the monitor: the hero works
     if (isPointerOnMonitor(event)) {
+        interruptHolds()
         game.working = true
-        holdPointer()
+        workPointerId = event.pointerId
+        holdPointer(event)
         return
     }
 
     // Holding his own lamp: the light slowly dims; hold to the end and he switches it off and leaves.
     // A hold rather than a tap: on phones the lamp is next to the monitor, and a stray tap used to end the night
     if (isPointerOnLamp(event)) {
+        interruptHolds()
         lampHold.holding = true
-        holdPointer()
+        lampPointerId = event.pointerId
+        holdPointer(event)
     }
 })
 
