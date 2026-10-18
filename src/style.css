@@ -798,6 +798,11 @@ h2 {
   color: var(--dim);
 }
 
+/* Shown on phones only, under each meter (see the phone media query) */
+.meter-hint {
+  display: none;
+}
+
 .meter-track {
   height: 4px;
   background: rgba(190, 235, 255, 0.1);
@@ -1217,8 +1222,30 @@ h2 {
 }
 
 @media (max-width: 560px) {
+  /* Phone: the HUD and the clock become one compact strip across the top, two rows:
+       SCORE 35 ··········· 23:57
+       PERFORMANCE ▬▬▬   STRESS ▬▬▬
+     with the night bar as the strip's bottom edge. The clock is its own element, laid exactly over the HUD box
+     with a transparent background, so no markup or JS changes. The role caption stays on the start and final screens */
+  :root {
+    --strip-height: 86px;
+  }
+
   .clock {
-    padding: 6px 12px;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    height: var(--strip-height);
+    justify-content: flex-start;
+    padding: 9px 12px;
+    border-color: transparent;
+    background: none;
+    backdrop-filter: none;
+  }
+
+  .clock-goal {
+    display: none;
   }
 
   .hud-rules {
@@ -1231,9 +1258,46 @@ h2 {
 
   /* On phones the HUD is just the score and two meters: the rules live in the handbook and the tutorial */
   .hud {
-    width: min(180px, calc(100% - 150px));
-    gap: 7px;
-    padding: 9px 12px;
+    right: 16px;
+    width: auto;
+    height: var(--strip-height);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      'score score'
+      'performance stress';
+    align-content: space-between;
+    column-gap: 16px;
+    row-gap: 0;
+    padding: 9px 12px 12px;
+  }
+
+  /* Leave room on the right for the time drawn over this row (5 characters at 18px) */
+  .hud-score {
+    grid-area: score;
+    padding-right: 76px;
+  }
+
+  .meter-performance {
+    grid-area: performance;
+  }
+
+  .meter-stress {
+    grid-area: stress;
+  }
+
+  /* What moves each meter, in place of the desktop rules list */
+  .meter-hint {
+    display: block;
+    margin-top: 2px;
+    font-size: 10px;
+    white-space: nowrap;
+    color: var(--dim);
+  }
+
+  .meter-hint-key {
+    text-transform: lowercase;
+    color: var(--glow);
   }
 
   .hud-rules {
@@ -1281,9 +1345,13 @@ h2 {
     padding-right: 48px;
   }
 
-  /* Little room: no 22:00 / 06:00 labels, the bar matches the clock width, tighter level caption */
+  /* The night bar is the strip's bottom edge: no 22:00 / 06:00 labels, full width, sitting on the border */
   .night {
-    align-self: stretch;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    margin: 0;
   }
 
   .night-edge {
@@ -1298,6 +1366,7 @@ h2 {
   .clock-goal {
     font-size: 10px;
     letter-spacing: 0.08em;
+    white-space: nowrap;
   }
 }
 
